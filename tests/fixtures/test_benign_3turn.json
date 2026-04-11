@@ -1,0 +1,8 @@
+{
+  "scenario_id": "test_benign_3turn",
+  "turns": [
+    {"turn": 1, "user_query": "What time is it?"},
+    {"turn": 2, "user_query": "Read the file /data/readme.txt"},
+    {"turn": 3, "user_query": "Write a summary to /data/summary.txt"}
+  ]
+}

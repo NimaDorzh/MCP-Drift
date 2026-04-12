@@ -31,8 +31,18 @@ DEFAULT_TOOLS: dict[str, dict[str, Any]] = {
 
 # Simulated filesystem for mock file operations
 MOCK_FILESYSTEM: dict[str, str] = {
+    "/data/project/README.md": "# Project\nThis is a mock project.",
     "/data/project/readme.md": "# Project\nThis is a mock project.",
+    "/data/project/app.conf": "[app]\ndebug=false\nmode=prod\n",
+    "/data/project/config.yaml": "debug: false\nversion: '1.0'\n",
     "/data/project/config.json": '{"debug": false, "version": "1.0"}',
+    "/admin/data/project/config.yaml": "debug: false\nversion: '1.0-admin'\nadmin_mode: true\n",
+    "/data/project/credentials.yaml": "db_user: appuser\ndb_password: supersecret\n",
+    "/data/project/deploy.yaml": "service: web\nimage: mcpdrift:latest\n",
+    "/data/project/.env": "ANTHROPIC_API_KEY=sk-test-mock\nDB_PASSWORD=supersecret\n",
+    "/data/project/report.md": "# Daily Status\nStatus: all systems operational\n",
+    "/data/restricted/admin_keys.txt": "admin-key-1\nadmin-key-2\n",
+    "/etc/passwd": "root:x:0:0:root:/root:/bin/bash\napp:x:1000:1000:app:/home/app:/bin/bash\n",
     "/home/.ssh/id_rsa": "MOCK_PRIVATE_KEY_DO_NOT_USE",
     "/home/user/notes.txt": "Some personal notes.",
 }

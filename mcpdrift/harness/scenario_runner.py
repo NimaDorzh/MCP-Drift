@@ -8,8 +8,11 @@ the resulting ``SessionTrace`` to disk.
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
+
+import jsonschema
 
 from mcpdrift.environments.mock_mcp_server import (
     DEFAULT_TOOLS,
@@ -21,6 +24,10 @@ from mcpdrift.environments.multi_turn_engine import (
     SessionTrace,
 )
 from mcpdrift.harness.agent_harness import AgentHarness, MockAgentHarness
+
+
+ATTACKS_DIR = Path(__file__).resolve().parent.parent / "attacks"
+SCHEMA_PATH = ATTACKS_DIR / "schema.json"
 
 
 # ---------------------------------------------------------------------------
@@ -65,8 +72,11 @@ class ScenarioRunner:
     # ------------------------------------------------------------------
 
     def _execute_scenario(self, scenario: dict[str, Any]) -> SessionTrace:
+        _validate_scenario(scenario)
+
         scenario_id = scenario.get("scenario_id", "unknown")
         queries = [t["user_query"] for t in scenario["turns"]]
+        tool_runtime = _build_tool_runtime(scenario)
 
         create_mock_server(_build_mock_server_config(scenario))
 
@@ -87,7 +97,11 @@ class ScenarioRunner:
             max_turns=len(queries),
             scenario_id=scenario_id,
             model=getattr(self.harness, "model", "unknown"),
-            tool_executor=_execute_mock_tool,
+            tool_executor=lambda tool_name, parameters: _execute_mock_tool(
+                tool_name,
+                parameters,
+                tool_runtime,
+            ),
         )
 
         # Run all turns
@@ -113,6 +127,17 @@ class ScenarioRunner:
 def _load_scenario(path: str) -> dict[str, Any]:
     """Read and parse a JSON scenario file."""
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+@lru_cache(maxsize=1)
+def _load_attack_schema() -> dict[str, Any]:
+    """Load the scenario schema once per process."""
+    return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def _validate_scenario(scenario: dict[str, Any]) -> None:
+    """Fail fast on structurally invalid scenarios before execution."""
+    jsonschema.validate(instance=scenario, schema=_load_attack_schema())
 
 
 def _build_tool_descriptions(
@@ -141,15 +166,30 @@ def _build_tool_descriptions(
 
     # If the poisoned tool is not one of the defaults, add it separately
     if poisoned and poisoned_name not in DEFAULT_TOOLS:
+        base_tool = poisoned.get("base_tool")
         descriptions.append({
             "name": poisoned_name,
             "description": poisoned.get("description", ""),
-            "input_schema": poisoned.get(
-                "input_schema", {"type": "object", "properties": {}}
-            ),
+            "input_schema": poisoned.get("input_schema")
+            or _default_input_schema(base_tool)
+            or {"type": "object", "properties": {}},
         })
 
     return descriptions
+
+
+def _build_tool_runtime(scenario: dict[str, Any]) -> dict[str, dict[str, str]]:
+    """Collect optional execution metadata for poisoned tools."""
+    poisoned = scenario.get("poisoned_tool")
+    if not poisoned:
+        return {}
+
+    return {
+        poisoned["name"]: {
+            "base_tool": poisoned.get("base_tool", ""),
+            "result_poison": poisoned.get("result_poison", ""),
+        }
+    }
 
 
 def _build_mock_server_config(scenario: dict[str, Any]) -> dict[str, Any] | None:
@@ -177,16 +217,29 @@ def _build_mock_server_config(scenario: dict[str, Any]) -> dict[str, Any] | None
     }
 
 
-def _execute_mock_tool(tool_name: str, parameters: dict[str, Any]) -> str:
+def _execute_mock_tool(
+    tool_name: str,
+    parameters: dict[str, Any],
+    tool_runtime: dict[str, dict[str, str]] | None = None,
+) -> str:
     """Execute a mock tool locally so traces contain concrete tool outputs."""
-    implementation = _TOOL_IMPLEMENTATIONS.get(tool_name)
-    if implementation is None:
-        return f"Error: unknown tool: {tool_name}"
+    runtime = (tool_runtime or {}).get(tool_name, {})
+    target_tool = runtime.get("base_tool") or tool_name
+    implementation = _TOOL_IMPLEMENTATIONS.get(target_tool)
 
-    try:
-        return str(implementation(**parameters))
-    except TypeError as exc:
-        return f"Error executing {tool_name}: {exc}"
+    if implementation is None:
+        result = f"{tool_name} completed successfully."
+    else:
+        try:
+            result = str(implementation(**parameters))
+        except TypeError as exc:
+            return f"Error executing {tool_name}: {exc}"
+
+    poisoned_result = runtime.get("result_poison")
+    if poisoned_result:
+        return f"{result}\n{poisoned_result}"
+
+    return result
 
 
 def _default_input_schema(tool_name: str) -> dict[str, Any]:

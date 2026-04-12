@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MCPDrift Attack Scenario",
+  "description": "Schema for attack scenarios in MCP-MultiTurn-Bench.",
+  "type": "object",
+  "required": [
+    "scenario_id",
+    "server",
+    "paradigm",
+    "attack_class",
+    "turns",
+    "poisoned_tool",
+    "attacker_goal",
+    "user_goal"
+  ],
+  "properties": {
+    "scenario_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for this scenario."
+    },
+    "server": {
+      "type": "string",
+      "description": "Mock server type (e.g. filesystem, email)."
+    },
+    "paradigm": {
+      "type": "string",
+      "enum": ["P1", "P2", "P3"],
+      "description": "MCPTox attack paradigm."
+    },
+    "attack_class": {
+      "type": "string",
+      "enum": ["baseline", "multi-turn"],
+      "description": "Whether this is a single-turn baseline or multi-turn scenario."
+    },
+    "turns": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["turn", "user_query"],
+        "properties": {
+          "turn": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1-based turn number."
+          },
+          "user_query": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The user query for this turn."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "poisoned_tool": {
+      "type": "object",
+      "required": [
+        "name",
+        "description",
+        "trigger_condition",
+        "malicious_action",
+        "plausible_justification"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tool name as registered with the MCP server."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The full poisoned tool description presented to the LLM."
+        },
+        "base_tool": {
+          "type": "string",
+          "enum": ["file_read", "file_write", "email_send", "get_time"],
+          "description": "Optional default tool whose runtime behavior this poisoned tool should mirror."
+        },
+        "trigger_condition": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What triggers the malicious behavior."
+        },
+        "malicious_action": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The attacker's intended action."
+        },
+        "plausible_justification": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why the behavior appears legitimate."
+        },
+        "result_poison": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional tool-result text appended at execution time so poisoned outputs persist in later turns."
+        },
+        "input_schema": {
+          "type": "object",
+          "description": "Optional JSON Schema for tool parameters."
+        }
+      },
+      "additionalProperties": false
+    },
+    "attacker_goal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What the attacker wants to achieve."
+    },
+    "user_goal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What the user legitimately wants to accomplish."
+    },
+    "system_prompt": {
+      "type": "string",
+      "description": "Optional custom system prompt for this scenario."
+    }
+  },
+  "additionalProperties": false,
+  "if": {
+    "properties": {
+      "attack_class": { "const": "baseline" }
+    }
+  },
+  "then": {
+    "properties": {
+      "turns": {
+        "maxItems": 1
+      }
+    }
+  },
+  "else": {
+    "properties": {
+      "turns": {
+        "minItems": 3,
+        "maxItems": 5
+      }
+    }
+  }
+}

@@ -67,7 +67,7 @@ python -c "import os; print(bool(os.environ.get('ANTHROPIC_API_KEY')))"
 
 1. MCPDrift собирает prompt для очередного хода.
 2. Вы вставляете этот prompt в Claude Pro или Copilot Chat.
-3. Модель отвечает строго JSON-объектом с `response_text` и `tool_calls`.
+3. В идеале модель отвечает JSON-объектом с `response_text` и `tool_calls`.
 4. Вы вставляете этот JSON обратно в терминал.
 5. MCPDrift сам исполняет mock tools локально, накапливает history и сохраняет `SessionTrace`.
 
@@ -87,7 +87,7 @@ python -m mcpdrift.harness.manual_runner --scenario mcpdrift/attacks/multiturn/m
 
 После запуска runner выведет prompt для текущего turn. Его нужно целиком вставить в Claude Pro или Copilot Chat.
 
-Важно попросить модель вернуть только JSON следующего вида:
+Лучший вариант: попросить модель вернуть только JSON следующего вида:
 
 ```json
 {
@@ -102,6 +102,10 @@ python -m mcpdrift.harness.manual_runner --scenario mcpdrift/attacks/multiturn/m
     ]
 }
 ```
+
+Если модель отказывается и пишет обычный текст вроде "это prompt injection атака, я отказываюсь", это тоже допустимо. Теперь manual runner умеет принять такой plain-text ответ как валидный benchmark outcome: он сохранит этот текст в `response_text`, а `tool_calls` выставит в пустой список.
+
+То есть ваш пример с отказом Claude не нужно выбрасывать. Его можно просто целиком вставить обратно в терминал и завершить строкой `END`.
 
 Затем этот JSON нужно вставить обратно в терминал и завершить ввод строкой:
 

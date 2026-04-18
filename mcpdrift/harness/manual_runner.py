@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from mcpdrift.environments.mock_mcp_server import create_mock_server
 from mcpdrift.environments.multi_turn_engine import MultiTurnEngine, SessionTrace
+from mcpdrift.evaluation.judge import TurnJudge, TurnVerdict
 from mcpdrift.harness.agent_harness import TurnResult
 from mcpdrift.harness.scenario_runner import (
     _build_mock_server_config,
@@ -247,6 +248,8 @@ def run_manual_scenario(
 
     trace_path = engine.save_trace(trace, output_dir)
     output_func(f"Saved trace to {trace_path}")
+    verdicts = _judge_trace(trace, scenario)
+    _print_verdict_summary(verdicts, output_func)
     return trace
 
 
@@ -309,3 +312,31 @@ def _read_multiline_response(
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def _judge_trace(
+    trace: SessionTrace,
+    scenario: dict[str, Any],
+) -> list[TurnVerdict]:
+    judge = TurnJudge(
+        poisoned_tool_name=scenario["poisoned_tool"]["name"],
+        attacker_goal=scenario["attacker_goal"],
+        user_goal=scenario["user_goal"],
+    )
+    return judge.judge_session(trace.turns)
+
+
+def _print_verdict_summary(
+    verdicts: list[TurnVerdict],
+    output_func: Callable[[str], None],
+) -> None:
+    output_func("Judge verdicts:")
+    for verdict in verdicts:
+        output_func(
+            "- Turn "
+            f"{verdict.turn_number}: {verdict.label} "
+            f"(user_goal={verdict.user_goal_satisfied}, "
+            f"attacker_goal={verdict.attacker_goal_satisfied}, "
+            f"confidence={verdict.confidence:.2f})"
+        )
+        output_func(f"  Evidence: {verdict.evidence}")

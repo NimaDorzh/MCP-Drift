@@ -24,10 +24,13 @@ from mcpdrift.environments.multi_turn_engine import (
     SessionTrace,
 )
 from mcpdrift.harness.agent_harness import AgentHarness, MockAgentHarness
+from mcpdrift.logging_utils import get_logger
 
 
 ATTACKS_DIR = Path(__file__).resolve().parent.parent / "attacks"
 SCHEMA_PATH = ATTACKS_DIR / "schema.json"
+
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +105,10 @@ class ScenarioRunner:
                 parameters,
                 tool_runtime,
             ),
+            poisoned_tool_name=(
+                scenario.get("poisoned_tool", {}).get("name")
+            ),
+            removal_turn=scenario.get("removal_turn"),
         )
 
         # Run all turns
@@ -110,11 +117,11 @@ class ScenarioRunner:
         # Persist trace
         engine.save_trace(trace, self.output_dir)
 
-        # Print summary
-        print(
-            f"[ScenarioRunner] {scenario_id}: "
-            f"{len(trace.turns)} turns executed — "
-            f"trace saved to {self.output_dir}"
+        logger.info(
+            "%s: %d turns executed \u2014 trace saved to %s",
+            scenario_id,
+            len(trace.turns),
+            self.output_dir,
         )
 
         return trace

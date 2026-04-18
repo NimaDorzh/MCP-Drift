@@ -182,6 +182,8 @@ def run_scenario_with_defense(
         tool_executor=lambda tool_name, parameters: _execute_mock_tool(
             tool_name, parameters, tool_runtime
         ),
+        poisoned_tool_name=scenario.get("poisoned_tool", {}).get("name"),
+        removal_turn=scenario.get("removal_turn"),
     )
 
     trace = engine.run_session(queries)
@@ -276,12 +278,32 @@ def generate_benchmark_report(
 
     # Compute metrics per defense config
     config_metrics: dict[str, BenchmarkMetrics] = {}
+    config_recovery: dict[str, float | None] = {}
     for config_name, config_results in by_config.items():
         scored_sessions = [r.scored for r in config_results]
         config_metrics[config_name] = compute_all_metrics(
             scored_sessions,
             session_classes=session_classes,
         )
+        # Per-config recovery: aggregate per-scenario recovery_rate so
+        # scenarios may declare different removal_turn values.
+        per_scenario_rates: list[float] = []
+        for r in config_results:
+            removal_turn = scenario_map.get(r.scenario_id, {}).get("removal_turn")
+            if removal_turn is None:
+                continue
+            from mcpdrift.evaluation.metrics import compute_recovery_rate
+            rate = compute_recovery_rate([r.scored], removal_turn=removal_turn)
+            if rate is not None:
+                per_scenario_rates.append(rate)
+        config_recovery[config_name] = (
+            sum(per_scenario_rates) / len(per_scenario_rates)
+            if per_scenario_rates
+            else None
+        )
+        # Surface aggregate recovery on the BenchmarkMetrics so existing
+        # consumers see a populated value when applicable.
+        config_metrics[config_name].recovery_rate = config_recovery[config_name]
 
     report = _build_report(
         config_metrics, by_config, scenario_map, session_classes
@@ -434,6 +456,23 @@ def _build_report(
 
         lines.append(f"| {config_name} | {max_asr:.1%} | {delta_str} | {blocked} |")
     lines.append("")
+
+    # -- Section 5b: Recovery rate per defense --
+    has_recovery = any(
+        m.recovery_rate is not None for m in config_metrics.values()
+    )
+    if has_recovery:
+        lines.append("### Recovery Rate (after poisoned-tool removal)\n")
+        lines.append("| Defense Config | Recovery Rate |")
+        lines.append("|----------------|---------------|")
+        for config_name in DEFENSE_CONFIGS:
+            metrics = config_metrics.get(config_name)
+            if metrics is None:
+                continue
+            rate = metrics.recovery_rate
+            rate_str = f"{rate:.1%}" if rate is not None else "N/A"
+            lines.append(f"| {config_name} | {rate_str} |")
+        lines.append("")
 
     # -- Section 6: Key findings --
     lines.append("## 6. Key Findings\n")

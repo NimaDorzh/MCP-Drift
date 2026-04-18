@@ -119,6 +119,11 @@
     "system_prompt": {
       "type": "string",
       "description": "Optional custom system prompt for this scenario."
+    },
+    "removal_turn": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Optional turn after which the poisoned tool is unregistered. Used to compute recovery_rate."
     }
   },
   "additionalProperties": false,

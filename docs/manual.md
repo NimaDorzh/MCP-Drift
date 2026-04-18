@@ -118,12 +118,14 @@ END
 - выполнит указанные tool calls через mock implementations;
 - подставит tool results в history;
 - сформирует prompt для следующего turn;
-- в конце сохранит trace в `results/traces`.
+- в конце сохранит trace в `results/traces`;
+- сразу выведет `Judge verdicts` по каждому ходу, включая `refused`, `ignored`, `partial`, `success`.
 
 ### Ограничения полу-ручного режима
 
 - Это медленнее, чем API-run, потому что каждый turn требует copy/paste.
 - Модель может иногда не соблюдать JSON-only формат; в этом случае runner попросит вставить ответ еще раз.
+- Plain-text refusal тоже допустим, в том числе на русском языке.
 - Воспроизводимость ниже, чем при `temperature=0` через API.
 - Defense benchmark в этом режиме автоматически не прогоняется.
 

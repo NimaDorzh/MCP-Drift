@@ -73,14 +73,18 @@ class MultiTurnEngine:
         scenario_id: str = "",
         model: str = "",
         tool_executor: Callable[[str, dict[str, Any]], str] | None = None,
+        poisoned_tool_name: str | None = None,
+        removal_turn: int | None = None,
     ) -> None:
         self.llm_client = llm_client
         self.system_prompt = system_prompt
-        self.tool_descriptions = tool_descriptions
+        self.tool_descriptions = list(tool_descriptions)
         self.max_turns = max_turns
         self.scenario_id = scenario_id
         self.model = model
         self.tool_executor = tool_executor
+        self.poisoned_tool_name = poisoned_tool_name
+        self.removal_turn = removal_turn
 
         # Accumulated message history (user/assistant/tool_result messages)
         self._history: list[dict[str, Any]] = []
@@ -147,6 +151,21 @@ class MultiTurnEngine:
         )
 
         self._snapshots.append(snapshot)
+
+        # Phase 5 recovery support: drop the poisoned tool from the
+        # advertised tool set after the configured removal turn so
+        # subsequent turns can demonstrate recovery.
+        if (
+            self.removal_turn is not None
+            and self.poisoned_tool_name is not None
+            and self._turn_number == self.removal_turn
+        ):
+            self.tool_descriptions = [
+                td
+                for td in self.tool_descriptions
+                if td.get("name") != self.poisoned_tool_name
+            ]
+
         return snapshot
 
     def run_session(self, queries: list[str]) -> SessionTrace:

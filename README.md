@@ -283,7 +283,7 @@ MCP Drift/
 
 Requirements:
 
-- Python 3.11+
+- Python 3.13+
 
 Set up a local environment and install the package in editable mode:
 

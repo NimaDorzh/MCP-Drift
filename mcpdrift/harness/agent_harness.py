@@ -1,17 +1,18 @@
-"""Agent harness: wraps LLM API clients for benchmark execution.
+"""Agent harness: wraps LLM providers for benchmark execution.
 
-Provides ``AgentHarness`` (real Anthropic API calls) and ``MockAgentHarness``
-(deterministic canned responses for testing without API keys).
+Provides ``AgentHarness`` (real provider-backed API calls) and
+``MockAgentHarness`` (deterministic canned responses for testing without API
+keys).
 """
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from pydantic import BaseModel
 
 from mcpdrift.environments.multi_turn_engine import ToolCall
+from mcpdrift.providers import LLMProvider, get_provider
 
 
 # ---------------------------------------------------------------------------
@@ -25,26 +26,24 @@ class TurnResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Real harness — Anthropic API
+# Real harness — provider-backed API
 # ---------------------------------------------------------------------------
 
 class AgentHarness:
-    """Wraps the Anthropic Messages API with MCP-style tool definitions."""
+    """Wraps an LLM provider with MCP-style tool definitions."""
 
     def __init__(
         self,
         model: str = "claude-sonnet-4-20250514",
-        api_key: str | None = None,
+        provider_name: str = "anthropic",
         temperature: float = 0.0,
+        provider: LLMProvider | None = None,
     ) -> None:
         self.model = model
+        self.provider_name = provider_name
         self.temperature = temperature
-
-        # Import lazily so tests that never call the real API don't need it
-        import anthropic
-
-        key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
-        self.client = anthropic.Anthropic(api_key=key)
+        self.provider = provider or get_provider(provider_name=provider_name, model=model)
+        self.last_latency_ms = 0.0
 
     # ------------------------------------------------------------------
 
@@ -55,23 +54,34 @@ class AgentHarness:
         messages: list[dict[str, Any]],
         user_query: str,
     ) -> TurnResult:
-        """Send one turn to the Anthropic API and parse the response."""
-        # Build messages list in Anthropic format
+        """Send one turn to the configured provider and normalize the response."""
         api_messages = _build_api_messages(messages, user_query)
+        tools = _build_tool_schemas(tool_descriptions, provider_name=self.provider_name)
 
-        # Convert tool descriptions into Anthropic tool schema
-        tools = _build_tool_schemas(tool_descriptions)
-
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=4096,
-            temperature=self.temperature,
-            system=system_prompt,
+        response = self.provider.complete(
             messages=api_messages,
-            tools=tools if tools else None,
+            tools=tools,
+            system_prompt=system_prompt,
+            temperature=self.temperature,
+            max_tokens=4096,
         )
-
-        return _parse_anthropic_response(response)
+        self.last_latency_ms = response.latency_ms
+        return TurnResult(
+            response_text=response.text,
+            tool_calls=[
+                ToolCall(
+                    tool_name=tool_call["tool_name"],
+                    parameters=tool_call.get("parameters", {}),
+                    result="",
+                )
+                for tool_call in response.tool_calls
+            ],
+            raw_response={
+                **response.raw,
+                "provider": self.provider_name,
+                "latency_ms": response.latency_ms,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +141,7 @@ class MockAgentHarness:
 def _build_api_messages(
     history: list[dict[str, Any]], user_query: str
 ) -> list[dict[str, Any]]:
-    """Convert internal history format to Anthropic messages format."""
+    """Convert internal history format to chat-style messages."""
     api_msgs: list[dict[str, Any]] = []
     for msg in history:
         role = msg["role"]
@@ -151,41 +161,29 @@ def _build_api_messages(
 
 def _build_tool_schemas(
     tool_descriptions: list[dict[str, Any]],
+    provider_name: str = "anthropic",
 ) -> list[dict[str, Any]]:
-    """Convert our tool description dicts into Anthropic tool schemas."""
+    """Convert internal tool descriptions into provider tool schemas."""
     schemas: list[dict[str, Any]] = []
     for td in tool_descriptions:
-        schema: dict[str, Any] = {
-            "name": td["name"],
-            "description": td.get("description", ""),
-            "input_schema": td.get(
-                "input_schema",
-                {"type": "object", "properties": {}},
-            ),
-        }
+        input_schema = td.get(
+            "input_schema",
+            {"type": "object", "properties": {}},
+        )
+        if provider_name == "anthropic":
+            schema = {
+                "name": td["name"],
+                "description": td.get("description", ""),
+                "input_schema": input_schema,
+            }
+        else:
+            schema = {
+                "type": "function",
+                "function": {
+                    "name": td["name"],
+                    "description": td.get("description", ""),
+                    "parameters": input_schema,
+                },
+            }
         schemas.append(schema)
     return schemas
-
-
-def _parse_anthropic_response(response: Any) -> TurnResult:
-    """Extract text and tool calls from an Anthropic Messages response."""
-    response_text = ""
-    tool_calls: list[ToolCall] = []
-
-    for block in response.content:
-        if block.type == "text":
-            response_text += block.text
-        elif block.type == "tool_use":
-            tool_calls.append(
-                ToolCall(
-                    tool_name=block.name,
-                    parameters=block.input if isinstance(block.input, dict) else {},
-                    result="",  # populated after tool execution
-                )
-            )
-
-    return TurnResult(
-        response_text=response_text,
-        tool_calls=tool_calls,
-        raw_response=response.model_dump() if hasattr(response, "model_dump") else {},
-    )

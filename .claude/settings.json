@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m mcpdrift.harness.manual_runner --scenario mcpdrift/attacks/multiturn/mt_delayed_env.json --model-label \"claude-sonnet-4-6\")"
+    ]
+  }
+}

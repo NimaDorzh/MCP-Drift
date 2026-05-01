@@ -89,13 +89,38 @@ def _load_traces(trace_dir: Path) -> list[dict[str, Any]]:
     if not trace_dir.exists():
         return []
 
-    traces: list[dict[str, Any]] = []
+    latest_by_key: dict[tuple[str, str, str], tuple[str, dict[str, Any]]] = {}
     for trace_path in sorted(trace_dir.glob("*.json")):
         try:
-            traces.append(json.loads(trace_path.read_text(encoding="utf-8")))
+            trace = json.loads(trace_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             continue
-    return traces
+
+        key = _trace_identity(trace)
+        timestamp = _trace_timestamp(trace)
+        current = latest_by_key.get(key)
+        if current is None or timestamp >= current[0]:
+            latest_by_key[key] = (timestamp, trace)
+
+    deduplicated = sorted(
+        latest_by_key.values(),
+        key=lambda item: (item[1].get("meta", {}).get("provider", ""), item[1].get("meta", {}).get("scenario_id", ""), item[1].get("meta", {}).get("defense", "")),
+    )
+    return [trace for _timestamp, trace in deduplicated]
+
+
+def _trace_identity(trace: dict[str, Any]) -> tuple[str, str, str]:
+    meta = trace.get("meta", {})
+    return (
+        str(meta.get("provider", "")),
+        str(meta.get("scenario_id", "")),
+        str(meta.get("defense", "")),
+    )
+
+
+def _trace_timestamp(trace: dict[str, Any]) -> str:
+    meta = trace.get("meta", {})
+    return str(meta.get("run_timestamp", ""))
 
 
 def _ordered_scenarios() -> list[str]:

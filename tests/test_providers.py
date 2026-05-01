@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from mcpdrift.providers.anthropic_provider import AnthropicProvider
+from mcpdrift.providers.factory import _required_api_key
 from mcpdrift.providers.openai_compat_provider import OpenAICompatProvider
 
 
@@ -118,3 +120,13 @@ def test_openai_compat_provider_normalizes_response() -> None:
     ]
     assert response.raw["provider"] == "openai-compatible"
     assert response.latency_ms >= 0.0
+
+
+def test_required_api_key_loads_from_dotenv(tmp_path: Path, monkeypatch: Any) -> None:
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text("DEEPSEEK_API_KEY=dotenv-secret\n", encoding="utf-8")
+
+    monkeypatch.setattr("mcpdrift.providers.factory.ENV_FILE_PATH", dotenv_path)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+    assert _required_api_key("DEEPSEEK_API_KEY", "deepseek") == "dotenv-secret"

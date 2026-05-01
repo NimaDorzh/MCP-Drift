@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 from mcpdrift.providers.anthropic_provider import AnthropicProvider
 from mcpdrift.providers.base import LLMProvider
+
+
+ENV_FILE_PATH = Path(__file__).resolve().parents[2] / ".env"
 
 
 def get_provider(provider_name: str, model: str) -> LLMProvider:
@@ -41,6 +47,7 @@ def get_provider(provider_name: str, model: str) -> LLMProvider:
 
 
 def _required_api_key(env_var: str, provider_name: str) -> str:
+    load_dotenv(dotenv_path=ENV_FILE_PATH, override=False)
     api_key = os.environ.get(env_var, "").strip()
     if api_key:
         return api_key

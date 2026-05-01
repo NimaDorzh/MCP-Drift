@@ -15,6 +15,7 @@ dependencies = [
     "mcp",
     "pydantic>=2.0",
     "jsonschema",
+    "numpy",
     "python-dotenv",
 ]
 

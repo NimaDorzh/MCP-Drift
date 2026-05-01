@@ -1,0 +1,8 @@
+fastmcp
+anthropic>=0.40
+openai>=1.0.0
+mcp
+pydantic>=2.0
+jsonschema
+numpy
+python-dotenv

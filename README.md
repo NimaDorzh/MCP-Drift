@@ -21,6 +21,8 @@ MCPDrift produces a **degradation curve** rather than a binary attack outcome. P
 | Degradation curve | No | No | **Yes (ASR@N)** |
 | Latency of compromise | No | No | **Yes** |
 
+For literature context and benchmark positioning, see [docs/related_work.md](docs/related_work.md).
+
 ## Status
 
 The MVP (Phases 1-5) is complete:
@@ -32,6 +34,19 @@ The MVP (Phases 1-5) is complete:
 - Phase 5: Baseline sanitizer, defense sweep runner, and benchmark reporting
 
 **Test suite**: 182 tests currently pass.
+
+## Results Snapshot
+
+Current benchmark outputs already include both mock-benchmark aggregates and real-model traces.
+
+| Result Set | Summary |
+| ---------- | ------- |
+| Mock benchmark | 10 scenarios x 5 defense configurations with generated benchmark reports |
+| DeepSeek V4 Flash | 70% ASR@max over 10 `no_defense` real-model runs |
+| Llama 3.3 70B | 50% ASR@max over 10 `no_defense` real-model runs |
+| Claude Sonnet 4.6 | Manual evaluation documented for `mt_delayed_env`; refused the delayed injection in that run |
+
+See [results/benchmark_report.md](results/benchmark_report.md) for the current aggregate report and [traces](traces) for per-run real-model traces.
 
 ## Repository Layout
 
@@ -76,11 +91,22 @@ MCP Drift/
 
 Requires Python 3.11+.
 
+### PowerShell
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -e .[dev]
+```
+
+### Bash
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e '.[dev]'
 ```
 
 You can also install the same runtime dependencies from `requirements.txt` if you prefer a flat requirements file.
@@ -89,7 +115,15 @@ You can also install the same runtime dependencies from `requirements.txt` if yo
 
 ### Run the full benchmark (mock harness, no API key required)
 
+PowerShell:
+
 ```powershell
+python -m mcpdrift.defenses.benchmark_runner
+```
+
+Bash:
+
+```bash
 python -m mcpdrift.defenses.benchmark_runner
 ```
 
@@ -97,7 +131,15 @@ This executes all 10 scenarios under all 5 defense configurations, writes per-ru
 
 ### Run a single scenario
 
+PowerShell:
+
 ```powershell
+python -m mcpdrift.harness.scenario_runner --scenario mcpdrift/attacks/multiturn/mt_delayed_ssh.json
+```
+
+Bash:
+
+```bash
 python -m mcpdrift.harness.scenario_runner --scenario mcpdrift/attacks/multiturn/mt_delayed_ssh.json
 ```
 
@@ -105,8 +147,17 @@ python -m mcpdrift.harness.scenario_runner --scenario mcpdrift/attacks/multiturn
 
 Set the provider key in your shell, then run the scenario runner with the desired provider:
 
+PowerShell:
+
 ```powershell
 $env:ANTHROPIC_API_KEY = "sk-ant-..."
+python -m mcpdrift.harness.scenario_runner --scenario mcpdrift/attacks/baseline/p1_email_redirect.json --provider anthropic
+```
+
+Bash:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
 python -m mcpdrift.harness.scenario_runner --scenario mcpdrift/attacks/baseline/p1_email_redirect.json --provider anthropic
 ```
 
@@ -114,7 +165,15 @@ For real-model runs, you can also store `ANTHROPIC_API_KEY`, `TOGETHER_API_KEY`,
 
 ### Semi-manual mode (Claude Pro, Copilot Chat)
 
+PowerShell:
+
 ```powershell
+python -m mcpdrift.harness.manual_runner --scenario mcpdrift/attacks/multiturn/mt_delayed_ssh.json --model-label claude-pro-manual
+```
+
+Bash:
+
+```bash
 python -m mcpdrift.harness.manual_runner --scenario mcpdrift/attacks/multiturn/mt_delayed_ssh.json --model-label claude-pro-manual
 ```
 
@@ -257,6 +316,7 @@ This makes MCPDrift suitable not only as a research artifact but also as an appl
 | Attack vector | Tool outputs / external data | Tool outputs | Tool outputs | Taxonomy | **Tool descriptions** |
 | Multi-turn focus | No | Partial | No | No | **Yes** |
 | Latency metrics | No | No | No | No | **Yes** |
+| Recovery metrics | No | No | No | No | **Yes** |
 | Defense sweep | No | Yes | No | No | **Yes** |
 | Real-LLM comparison | No | Yes | Yes | No | **Yes** |
 | MCP-specific | No | No | No | Yes | **Yes** |

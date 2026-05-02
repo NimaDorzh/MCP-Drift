@@ -139,7 +139,7 @@ from mcpdrift.harness.agent_harness import AgentHarness
 from mcpdrift.harness.scenario_runner import ScenarioRunner
 
 harness = AgentHarness(
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-4-6",
     temperature=0.0,
 )
 
@@ -174,7 +174,7 @@ from mcpdrift.evaluation.turn_scorer import TurnScorer
 from mcpdrift.evaluation.metrics import compute_all_metrics
 
 harness = AgentHarness(
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-4-6",
     temperature=0.0,
 )
 

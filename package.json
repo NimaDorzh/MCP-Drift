@@ -1,0 +1,9 @@
+{
+  "name": "mcpdrift-docx-tools",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Local tooling for generating the MCPDrift analysis docx report",
+  "dependencies": {
+    "docx": "^9.5.1"
+  }
+}

@@ -34,7 +34,7 @@ class AgentHarness:
 
     def __init__(
         self,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-sonnet-4-6",
         provider_name: str = "anthropic",
         temperature: float = 0.0,
         provider: LLMProvider | None = None,

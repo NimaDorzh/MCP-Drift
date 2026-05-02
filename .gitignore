@@ -38,3 +38,5 @@ results/figures/
 
 # additional docs
 docs/mvp/
+/node_modules
+docs/MCPDrift_Analysis.docx

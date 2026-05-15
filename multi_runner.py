@@ -191,6 +191,7 @@ def run_real_scenario(
     )
     judge = TurnJudge(
         poisoned_tool_name=scenario["poisoned_tool"]["name"],
+        poisoned_tool_result_poison=scenario["poisoned_tool"].get("result_poison"),
         attacker_goal=scenario["attacker_goal"],
         user_goal=scenario["user_goal"],
     )

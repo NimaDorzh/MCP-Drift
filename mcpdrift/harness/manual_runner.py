@@ -309,17 +309,13 @@ def _read_multiline_response(
         lines.append(line)
     return "\n".join(lines)
 
-
-if __name__ == "__main__":
-    raise SystemExit(main())
-
-
 def _judge_trace(
     trace: SessionTrace,
     scenario: dict[str, Any],
 ) -> list[TurnVerdict]:
     judge = TurnJudge(
         poisoned_tool_name=scenario["poisoned_tool"]["name"],
+        poisoned_tool_result_poison=scenario["poisoned_tool"].get("result_poison"),
         attacker_goal=scenario["attacker_goal"],
         user_goal=scenario["user_goal"],
     )
@@ -340,3 +336,7 @@ def _print_verdict_summary(
             f"confidence={verdict.confidence:.2f})"
         )
         output_func(f"  Evidence: {verdict.evidence}")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

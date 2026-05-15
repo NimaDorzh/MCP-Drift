@@ -231,6 +231,7 @@ def run_defense_benchmark(
             # Judge the session
             judge = TurnJudge(
                 poisoned_tool_name=poisoned_name,
+                poisoned_tool_result_poison=scenario["poisoned_tool"].get("result_poison"),
                 attacker_goal=attacker_goal,
                 user_goal=user_goal,
             )

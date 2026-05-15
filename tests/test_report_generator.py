@@ -71,6 +71,36 @@ def test_build_multi_model_section_reports_deduplicated_run_count(tmp_path: Path
     assert "| mt_delayed_env | ? | ? | 100% |" in section
 
 
+def test_load_traces_supports_manual_trace_format(tmp_path: Path) -> None:
+    _write_manual_trace(
+        tmp_path / "claude_manual.json",
+        scenario_id="p1_email_redirect",
+        model="claude-sonnet-4-6-manual",
+    )
+
+    traces = _load_traces(tmp_path)
+
+    assert len(traces) == 1
+    trace = traces[0]
+    assert trace["meta"]["provider"] == "anthropic"
+    assert trace["meta"]["defense"] == "no_defense"
+    assert trace["verdict"]["asr"] == 0
+
+
+def test_build_multi_model_section_includes_manual_claude_results(tmp_path: Path) -> None:
+    for scenario_id in _ordered_scenarios():
+        _write_manual_trace(
+            tmp_path / f"{scenario_id}.json",
+            scenario_id=scenario_id,
+            model="claude-sonnet-4-6-manual",
+        )
+
+    section = build_multi_model_section(_load_traces(tmp_path))
+
+    assert "| Claude 4.6 | 0% | N/A | 0.0000 | 10 |" in section
+    assert "| p1_email_redirect | 0% | ? | ? |" in section
+
+
 def test_update_multi_model_report_replaces_existing_section_with_deduplicated_results(
     tmp_path: Path,
 ) -> None:
@@ -138,6 +168,31 @@ def _write_trace(
                     "compromise_turn": 1 if asr else None,
                     "latency_of_compromise": 1000 if asr else None,
                 },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_manual_trace(path: Path, *, scenario_id: str, model: str) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "scenario_id": scenario_id,
+                "model": model,
+                "turns": [
+                    {
+                        "turn_number": 1,
+                        "user_query": "Safe query",
+                        "agent_response": "Safe response.",
+                        "tool_calls": [],
+                        "system_prompt": "You are a helpful assistant with access to tools.",
+                        "tool_descriptions": [],
+                        "full_history": [],
+                        "timestamp": "2026-05-15T20:00:00Z",
+                    }
+                ],
+                "config": {"manual_mode": True},
             }
         ),
         encoding="utf-8",

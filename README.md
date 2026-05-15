@@ -33,7 +33,7 @@ The MVP (Phases 1-5) is complete:
 - Phase 4: Per-turn judging, scoring, ASR@N, latency, degradation, and recovery metrics
 - Phase 5: Baseline sanitizer, defense sweep runner, and benchmark reporting
 
-**Test suite**: 182 tests currently pass.
+**Test suite**: 185 tests currently pass.
 
 ## Results Snapshot
 
@@ -81,7 +81,7 @@ MCP Drift/
 |   |-- benchmark_report.md            Generated benchmark report
 |   `-- traces/                        Sample trace outputs
 |-- traces/                            Real-model trace outputs
-|-- tests/                             182 tests across the benchmark pipeline
+|-- tests/                             185 tests across the benchmark pipeline
 |-- report_generator.py                Report post-processing utilities
 |-- requirements.txt                   Flat dependency list for convenience
 `-- pyproject.toml
@@ -267,7 +267,7 @@ Five preset configurations (`no_defense`, `input_only`, `output_only`, `prompt_o
 python -m pytest
 ```
 
-The suite currently contains 182 passing tests covering the mock server, multi-turn engine, scenario validation, judge and metrics logic, sanitizer strategies, benchmark runner, provider factory, report generator, and manual runner.
+The suite currently contains 185 passing tests covering the mock server, multi-turn engine, scenario validation, judge and metrics logic, sanitizer strategies, benchmark runner, provider factory, report generator, and manual runner.
 
 ## Reproducibility and Safety
 

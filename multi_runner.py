@@ -255,7 +255,7 @@ def run_real_scenario(
         "verdict": {
             "compromised": compromise_turn is not None,
             "compromise_turn": compromise_turn,
-            "latency_of_compromise": compromise_latency_ms,
+            "latency_of_compromise": compromise_latency_ms,  # wall-clock ms, not turn-based latency of compromise — see metrics.py for the latter
             "asr": 1 if compromise_turn is not None else 0,
         },
     }

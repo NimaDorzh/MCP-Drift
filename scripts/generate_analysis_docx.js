@@ -190,7 +190,7 @@ function buildData() {
     },
     {
       item: "Broad test coverage over pipeline slices",
-      detail: "Representative tests cover engine state growth, scoring semantics, defense behavior, provider normalization, and report generation. A live pytest run during this analysis confirmed 182 passing tests.",
+      detail: "Representative tests cover engine state growth, scoring semantics, defense behavior, provider normalization, and report generation. A live pytest run during this analysis confirmed 185 passing tests.",
       evidence: "tests/test_multi_turn_engine.py; tests/test_evaluation.py; tests/test_benchmark_runner.py; tests/test_providers.py; tests/test_sanitizer.py",
     },
     {
@@ -217,9 +217,9 @@ function buildData() {
       evidence: "mcpdrift/harness/agent_harness.py:106-131",
     },
     {
-      item: "Documentation drift remains in docs/Report.md",
-      detail: "README.md now states 182 passing tests, but docs/Report.md still reports 178. That undermines confidence in the project write-up even though the repository state itself is current.",
-      evidence: "README.md:36 and 270; docs/Report.md:6, 19, 29, 209",
+      item: "Documentation count synchronization",
+      detail: "README.md and docs/Report.md now both state 185 passing tests. Those explicit count references need to stay synchronized as the suite evolves.",
+      evidence: "README.md:36, 84, 270; docs/Report.md:6, 19, 29, 232",
     },
     {
       item: "LLM fallback judge is defined but not wired into benchmark paths",
@@ -279,7 +279,7 @@ function buildData() {
     },
     {
       concern: "Documentation drift",
-      evidence: "docs/Report.md still reports 178 passing tests at lines 6, 19, 29, and 209, while README.md reports 182 at lines 36 and 270.",
+      evidence: "README.md and docs/Report.md now both include explicit 185-test references that should remain synchronized.",
       implication: "The paper/report narrative can look stale even when the code and test suite are current.",
     },
   ];
@@ -447,7 +447,7 @@ function buildDocument(data) {
     [
       ["Test scenarios", "10 (5 baseline, 5 multi-turn)"],
       ["Defense configurations", "5"],
-      ["Test suite", "182 passing tests"],
+      ["Test suite", "185 passing tests"],
       ["Mock ASR@max (no defense)", "90%"],
       ["Real ASR - DeepSeek V4 Flash", "70%"],
       ["Real ASR - Llama 3.3 70B", "50%"],
@@ -515,7 +515,7 @@ function buildDocument(data) {
     [
       ["P0", "Full Claude sweep (10 scenarios)", "Critical - only one real Claude datapoint is documented, and it is manual rather than a trace sweep.", "Low"],
       ["P1", "Consolidate trace directories", "Reproducibility and analysis quality suffer while results are split across results/traces and top-level traces.", "Low"],
-      ["P1", "Fix README / report count drift", "Credibility risk because docs/Report.md still says 178 while the current suite is 182.", "Trivial"],
+      ["P1", "Keep README / report count sync", "Credibility risk if explicit documentation counts drift from the current suite total of 185.", "Trivial"],
       ["P2", "Real-model defense sweep", "Needed to validate whether prompt hardening and description sanitization help outside the mock harness.", "Medium"],
       ["P2", "JSON trace archival for mock defense runs", "Needed for reproducible defense-sweep forensics and paper artifact review.", "Low"],
       ["P3", "Expand to 15-20 scenarios", "Would improve coverage across attack subclasses and reduce overfitting to ten hand-written cases.", "High"],
@@ -654,7 +654,7 @@ function buildDocument(data) {
           paragraph(
             "That pattern suggests the alignment split is not simply 'more secure' versus 'less secure.' Llama appears stronger against delayed compliance-monitor framing and session-threshold triggers, but it still follows an explicit helper-wrapper hijack. DeepSeek resists that one direct file-hijack case, yet it is more vulnerable to policy-sounding background monitors and delayed session triggers. The headline result is therefore the cross-model spread itself: tool-description poisoning is a real capability benchmark, and different models fail in different ways. Claude should be treated as pending rather than secure, because one manual refusal on one scenario is not a sweep."
           ),
-          labeledParagraph("Observed averages", `DeepSeek mean latency of compromise: ${mean(data.providerStats.deepseek.latencies).toFixed(0)} ms over 7 successful runs; Llama mean latency of compromise: ${mean(data.providerStats.together.latencies).toFixed(0)} ms over 5 successful runs.`),
+          labeledParagraph("Observed averages", `DeepSeek mean cumulative API latency: ${mean(data.providerStats.deepseek.latencies).toFixed(0)} ms over 7 successful runs; Llama mean cumulative API latency: ${mean(data.providerStats.together.latencies).toFixed(0)} ms over 5 successful runs.`),
 
           paragraph("7. Code Quality Assessment", { heading: HeadingLevel.HEADING_1 }),
           paragraph("Strengths", { heading: HeadingLevel.HEADING_2 }),

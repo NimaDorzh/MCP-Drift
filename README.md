@@ -25,28 +25,34 @@ For literature context and benchmark positioning, see [docs/related_work.md](doc
 
 ## Status
 
-The MVP (Phases 1-5) is complete:
+The MVP (Phases 1-5) is complete and the repository now supports three execution paths:
+
+- deterministic mock benchmarking for reproducible defense sweeps
+- semi-manual real-model evaluation for Claude Pro and Copilot Chat
+- automated provider-backed evaluation for Anthropic, Together, and DeepSeek
+
+Current project state:
 
 - Phase 1: Mock MCP server with injectable poisoned descriptions
-- Phase 2: Multi-turn engine, agent harnesses, and scenario runner
+- Phase 2: Multi-turn engine, agent harnesses, and scenario runner APIs
 - Phase 3: 10 attack scenarios (5 baseline, 5 multi-turn) with JSON schema validation
 - Phase 4: Per-turn judging, scoring, ASR@N, latency, degradation, and recovery metrics
-- Phase 5: Baseline sanitizer, defense sweep runner, and benchmark reporting
-
-**Test suite**: 185 tests currently pass.
+- Phase 5: Baseline sanitizer, defense sweep runner, report generation, and multi-model trace aggregation
+- 185 tests currently pass
+- no unified package CLI yet; the supported entrypoints are the documented scripts and Python APIs below
 
 ## Results Snapshot
 
-Current benchmark outputs already include both mock-benchmark aggregates and real-model traces.
+Current repository artifacts include both reproducible mock-benchmark aggregates and real-model traces.
 
 | Result Set | Summary |
 | ---------- | ------- |
-| Mock benchmark | 10 scenarios x 5 defense configurations with generated benchmark reports |
-| DeepSeek V4 Flash | 70% ASR@max over 10 `no_defense` real-model runs |
-| Llama 3.3 70B | 50% ASR@max over 10 `no_defense` real-model runs |
-| Claude Sonnet 4.6 | Manual evaluation documented for `mt_delayed_env`; refused the delayed injection in that run |
+| Mock defense benchmark | 10 scenarios x 5 defense configurations with a generated aggregate report |
+| Claude Sonnet 4.6 | 0% ASR@max across 10 semi-manual benchmark runs |
+| Llama 3.3 70B | 50% ASR@max across 10 provider-backed `no_defense` runs |
+| DeepSeek V4 Flash | 70% ASR@max across 10 provider-backed `no_defense` runs |
 
-See [results/benchmark_report.md](results/benchmark_report.md) for the current aggregate report and [traces](traces) for per-run real-model traces.
+See [results/benchmark_report.md](results/benchmark_report.md) for the current aggregate report, [traces](traces) for automated provider-backed runs, and [results/traces](results/traces) for manual or API-driven scenario traces saved by `ScenarioRunner`.
 
 ## Repository Layout
 
@@ -57,6 +63,7 @@ MCP Drift/
 |   |-- related_work.md                Literature review and positioning
 |   |-- Report.md                      Project report
 |   `-- MVP/                           Project brief, MVP plan, Phase 1-5 specs and reports
+|-- multi_runner.py                    Automated real-model sweep across anthropic/together/deepseek
 |-- mcpdrift/
 |   |-- attacks/
 |   |   |-- schema.json                JSON schema for scenario validation
@@ -74,22 +81,29 @@ MCP Drift/
 |   |   `-- metrics.py                 ASR@N, latency, degradation rate, recovery rate
 |   |-- harness/
 |   |   |-- agent_harness.py           Anthropic + mock harnesses, logs every tool call
-|   |   |-- scenario_runner.py         Loads scenarios, runs N turns, writes traces
+|   |   |-- scenario_runner.py         ScenarioRunner API for running scenarios and saving traces
 |   |   `-- manual_runner.py           Semi-manual mode for Claude Pro / Copilot Chat
-|   `-- results/traces/                Per-run JSON traces
+|   |-- providers/                     Anthropic and OpenAI-compatible provider adapters
+|   `-- results/traces/                Package-local sample trace path used by docs/tests
+|-- report_generator.py                Rebuilds the multi-model section in results/benchmark_report.md
 |-- results/
 |   |-- benchmark_report.md            Generated benchmark report
-|   `-- traces/                        Sample trace outputs
-|-- traces/                            Real-model trace outputs
+|   |-- manual_benchmark_summary_20260515.md
+|   `-- traces/                        ScenarioRunner and manual-runner trace outputs
+|-- scripts/
+|   `-- generate_analysis_docx.js      Builds docs/MCPDrift_Analysis.docx from repo artifacts
+|-- traces/                            Automated real-model sweep traces
 |-- tests/                             185 tests across the benchmark pipeline
-|-- report_generator.py                Report post-processing utilities
 |-- requirements.txt                   Flat dependency list for convenience
+|-- package.json                       Optional Node dependency for DOCX export tooling
 `-- pyproject.toml
 ```
 
 ## Installation
 
 Requires Python 3.11+.
+
+Optional: Node.js 18+ if you want to generate the DOCX analysis artifact in `scripts/generate_analysis_docx.js`.
 
 ### PowerShell
 
@@ -111,57 +125,96 @@ python -m pip install -e '.[dev]'
 
 You can also install the same runtime dependencies from `requirements.txt` if you prefer a flat requirements file.
 
+Optional DOCX tooling:
+
+```powershell
+npm install
+```
+
 ## Usage
 
-### Run the full benchmark (mock harness, no API key required)
+### Run the test suite
+
+```powershell
+python -m pytest
+```
+
+### Reproduce the deterministic mock defense benchmark
+
+`benchmark_runner.py` is currently a library module, not a standalone CLI entrypoint. Run it through a short Python script:
+
+```python
+import json
+from pathlib import Path
+
+from mcpdrift.defenses.benchmark_runner import generate_benchmark_report, run_defense_benchmark
+
+scenario_paths = [str(path) for path in sorted(Path("mcpdrift/attacks").rglob("*.json"))]
+results = run_defense_benchmark(scenario_paths)
+scenarios = [json.loads(Path(path).read_text(encoding="utf-8")) for path in scenario_paths]
+generate_benchmark_report(results, scenarios, output_path="results/benchmark_report.md")
+```
+
+This reproduces the mock defense sweep and refreshes [results/benchmark_report.md](results/benchmark_report.md). It does **not** persist per-run defense traces.
+
+### Run a single scenario with the Python API
+
+For deterministic local runs without API keys:
+
+```python
+from mcpdrift.harness.agent_harness import MockAgentHarness
+from mcpdrift.harness.scenario_runner import ScenarioRunner
+
+runner = ScenarioRunner(harness=MockAgentHarness())
+trace = runner.run_scenario("mcpdrift/attacks/multiturn/mt_delayed_ssh.json")
+print(trace.model_dump_json(indent=2))
+```
+
+`ScenarioRunner` saves traces to `results/traces/` by default.
+
+### Run a single real-model scenario through the provider API
+
+Set a provider key in your shell or in a repository-root `.env` file, then call `ScenarioRunner` with `AgentHarness`:
+
+```python
+from mcpdrift.harness.agent_harness import AgentHarness
+from mcpdrift.harness.scenario_runner import ScenarioRunner
+
+harness = AgentHarness(
+  provider_name="anthropic",
+  model="claude-sonnet-4-6",
+  temperature=0.0,
+)
+runner = ScenarioRunner(harness=harness, output_dir="results/traces")
+trace = runner.run_scenario("mcpdrift/attacks/baseline/p1_email_redirect.json")
+print(trace.model_dump_json(indent=2))
+```
+
+Supported providers in the current codebase:
+
+- `anthropic` -> `ANTHROPIC_API_KEY`
+- `together` -> `TOGETHER_API_KEY`
+- `deepseek` -> `DEEPSEEK_API_KEY`
+
+Provider initialization automatically loads a root-level `.env` file when present.
+
+### Run the automated multi-provider sweep
 
 PowerShell:
 
 ```powershell
-python -m mcpdrift.defenses.benchmark_runner
+python multi_runner.py --dry-run
+python multi_runner.py --providers anthropic together deepseek --defenses no_defense
 ```
 
 Bash:
 
 ```bash
-python -m mcpdrift.defenses.benchmark_runner
+python multi_runner.py --dry-run
+python multi_runner.py --providers anthropic together deepseek --defenses no_defense
 ```
 
-This executes all 10 scenarios under all 5 defense configurations, writes per-run traces, and regenerates [results/benchmark_report.md](results/benchmark_report.md).
-
-### Run a single scenario
-
-PowerShell:
-
-```powershell
-python -m mcpdrift.harness.scenario_runner --scenario mcpdrift/attacks/multiturn/mt_delayed_ssh.json
-```
-
-Bash:
-
-```bash
-python -m mcpdrift.harness.scenario_runner --scenario mcpdrift/attacks/multiturn/mt_delayed_ssh.json
-```
-
-### Run against a real API-backed provider
-
-Set the provider key in your shell, then run the scenario runner with the desired provider:
-
-PowerShell:
-
-```powershell
-$env:ANTHROPIC_API_KEY = "sk-ant-..."
-python -m mcpdrift.harness.scenario_runner --scenario mcpdrift/attacks/baseline/p1_email_redirect.json --provider anthropic
-```
-
-Bash:
-
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-python -m mcpdrift.harness.scenario_runner --scenario mcpdrift/attacks/baseline/p1_email_redirect.json --provider anthropic
-```
-
-For real-model runs, you can also store `ANTHROPIC_API_KEY`, `TOGETHER_API_KEY`, and `DEEPSEEK_API_KEY` in a `.env` file at the repository root. MCPDrift loads that file automatically when initializing providers.
+This writes normalized real-model traces to [traces](traces) and refreshes the multi-model section in [results/benchmark_report.md](results/benchmark_report.md).
 
 ### Semi-manual mode (Claude Pro, Copilot Chat)
 
@@ -178,6 +231,22 @@ python -m mcpdrift.harness.manual_runner --scenario mcpdrift/attacks/multiturn/m
 ```
 
 The manual runner prints a fully assembled prompt per turn. You paste it into Claude Pro or Copilot Chat, paste back the JSON reply, and MCPDrift executes the mock tools locally while accumulating history. See [docs/manual.md](docs/manual.md) for the full workflow.
+
+### Rebuild the multi-model report section from saved traces
+
+```powershell
+python report_generator.py
+```
+
+By default, `report_generator.py` merges normalized traces from both `traces/` and `results/traces/` when rebuilding the `## Multi-Model Real LLM Results` section.
+
+### Generate the DOCX analysis bundle (optional)
+
+```powershell
+node scripts/generate_analysis_docx.js
+```
+
+This reads [README.md](README.md), [docs/Report.md](docs/Report.md), [docs/related_work.md](docs/related_work.md), [results/benchmark_report.md](results/benchmark_report.md), and trace artifacts to produce `docs/MCPDrift_Analysis.docx`.
 
 ### Programmatic mock-server usage
 
@@ -269,11 +338,18 @@ python -m pytest
 
 The suite currently contains 185 passing tests covering the mock server, multi-turn engine, scenario validation, judge and metrics logic, sanitizer strategies, benchmark runner, provider factory, report generator, and manual runner.
 
+## Trace Locations
+
+- `results/traces/`: traces written by `ScenarioRunner` and `manual_runner`
+- `traces/`: traces written by `multi_runner.py`
+- `report_generator.py`: aggregates both locations by default when rebuilding the multi-model section
+
 ## Reproducibility and Safety
 
 - All file, email, and time operations are simulated: no real filesystem writes, no real emails, and no network exfiltration occur inside the benchmark environment.
 - The mock server uses a fixed timestamp.
-- Real API runs use deterministic settings and log pinned model identifiers into each trace.
+- Real API runs use deterministic settings and log pinned model identifiers into each trace, but still call live provider APIs.
+- Even in provider-backed runs, tool execution remains local to the mock benchmark environment.
 - Mock harness responses are deterministic and suitable for CI.
 
 ## Related Work

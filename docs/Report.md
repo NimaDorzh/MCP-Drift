@@ -14,7 +14,7 @@
 | Phase 1: Mock MCP Server       | ✅ Complete          | 4 mock tools, poisoned description injection, deterministic behavior   |
 | Phase 2: Multi-Turn Engine + Harness | ✅ Complete     | context accumulation, tool-result replay, mock + provider-backed real harness + manual harness |
 | Phase 3: Attack Scenarios (10 шт.) | ✅ Complete       | 5 baseline + 5 multi-turn сценариев, schema validation                 |
-| Phase 4: Evaluation Pipeline   | ✅ Complete          | judge, turn scorer, ASR@N, latency, degradation, recovery              |
+| Phase 4: Evaluation Pipeline   | ✅ Complete          | judge, turn scorer, ASR@N, latency, degradation; recovery logic is implemented and tested in the harness but not yet exercised in the published scenario set |
 | Phase 5: Defense + Report      | ✅ Complete          | sanitizer, defense sweep, generated benchmark report                   |
 | **Итого**                      | **Всё реализовано** | **185 тестов проходят, MVP рабочий**                                   |
 
@@ -35,7 +35,7 @@
 
 4. **Баги находились и исправлялись** при review каждой фазы:
    - Phase 2: tool-result replay в history, missing tool execution
-   - Phase 4: degradation curve семантика (binary compromise progression вместо fraction), recovery rate denominator (исключение clean sessions)
+   - Phase 4: degradation curve семантика (binary compromise progression вместо fraction); recovery logic is implemented and tested in the harness but not yet exercised in the published scenario set, so empirical recovery measurements remain future work
    - Phase 5: output sanitization не была интегрирована в runner, ASR carry-forward в report
    - Multi-provider extension: eager import `openai` ломал mock-only test collection, исправлено lazy import path
    - Это признак зрелого процесса разработки.
@@ -214,7 +214,7 @@
 | - | ------------------------------- | --------------------------------------------------------------------------------------------- |
 | 6 | **Дополнительные провайдеры**  | Расширение provider layer для OpenAI GPT-4o, Google Gemini и других OpenAI-compatible endpoints |
 | 7 | **Расширение сценариев**       | Увеличение с 10 до 30–50+ для статистической значимости                                      |
-| 8 | **Recovery rate testing**      | Сценарии с удалением poisoned tool mid-session                                               |
+| 8 | **Recovery evaluation scenarios** | Recovery logic is implemented and tested in the harness, but published scenarios do not yet exercise `removal_turn`; empirical recovery measurements remain future work |
 | 9 | **MCP client/server round-trip** | Реальное MCP-соединение через stdio/HTTP+SSE вместо локальных mock вызовов                 |
 
 ### Низкий приоритет

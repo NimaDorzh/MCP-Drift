@@ -1,108 +1,12 @@
 # MCPDrift - Related Work
 
-## 1. Foundational Work: Indirect Prompt Injection
+Indirect prompt injection was established by Greshake et al. (2023), who formalized attacks in which the adversary does not address the model through the user channel, but instead places instructions in external content that the system later reads autonomously. Their framing is the foundation for MCPDrift. Tool-description poisoning is a narrower instance of the same family: the malicious instruction is embedded in the interface metadata presented to the agent rather than in a retrieved document, email, or web page. MCPDrift therefore inherits the indirect prompt injection threat model of Greshake et al. (2023) while focusing on the trust boundary created when an agent conditions on tool descriptions before and during tool use.
 
-The field is grounded in **Greshake et al. (2023)**, *Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection* (arXiv:2302.12173, AISec 2023).
+Subsequent benchmarks operationalize indirect prompt injection against tool-using agents, but they do not isolate the behavior MCPDrift is designed to measure. InjecAgent (Zhan et al., 2024) shows that indirect prompt injection transfers across tool-integrated agents and simulated application settings, giving a broad single-turn benchmark for attack effectiveness across domains. AgentDojo (Debenedetti et al., 2024) moves closer to realistic agent execution with dynamic environments, adversarial tool results, and multi-step tasks, making it the closest prior benchmark in evaluation style. The difference in injection point is substantive: InjecAgent and AgentDojo study malicious content delivered through environment observations or tool outputs, whereas MCPDrift studies poisoning in tool descriptions themselves. AgentDojo evaluates multi-step tasks within a single session in a stateful environment, but it does not provide a turn-by-turn measurement framework for compromise latency or degradation dynamics. These benchmarks therefore establish the broader security problem without directly measuring how description-level poisoning accumulates across repeated turns.
 
-That paper formalized a class of attacks in which the adversary does not address the LLM directly. Instead, attacker instructions are embedded into data that the model later reads on its own: web pages, documents, email, or other external content. Once an agent consumes poisoned content, the malicious instruction enters the model context alongside the user request. The paper also framed the downstream consequences, including data theft, worm-like propagation between agents, contamination of the surrounding information ecosystem, and unauthorized API actions.
+Recent MCP-specific benchmarks sharpen the comparison. MCPTox (Wang et al., 2026) is the closest prior work on attack surface because it evaluates tool-description poisoning directly across 45 real-world MCP servers and 20 models. That contribution is substantial: it demonstrates that the attack is practical in deployed MCP ecosystems and provides a much larger scenario base than MCPDrift currently offers. At the same time, MCPTox is explicitly limited to single-turn interaction and identifies multi-turn, stateful settings as future work. MCPSecBench (Yang et al., 2026) broadens coverage further by evaluating four attack surfaces, 17 attack types, and three MCP platforms. Its contribution is breadth across the MCP security landscape, including protocol-level and host-side threats that MCPDrift does not attempt to cover. MCPDrift does not address MitM, DNS rebinding, CVE exploitation, or configuration drift, and it does not yet match the corpus scale or evaluation standardization of these broader benchmarks. Its contribution is narrower and methodological: a working harness for repeated-turn measurement of tool-description poisoning, including latency of compromise, degradation rate, and defense sweep. That gap remains open in prior MCP benchmarks, which either evaluate description poisoning only in single-turn form or distribute attention across multiple threat classes without longitudinal compromise metrics.
 
-**Connection to MCPDrift:** MCPDrift studies a narrower but highly relevant variant of the same family: injection through *tool descriptions* rather than tool outputs or retrieved content. The attack lands before the first tool call, when the agent ingests the tool manifest.
+MCPDrift should therefore be read as a complement to these lines of work rather than a replacement for them: Greshake et al. (2023) define the attack family, InjecAgent (Zhan et al., 2024) and AgentDojo (Debenedetti et al., 2024) benchmark indirect prompt injection in tool-using agents, and MCPTox (Wang et al., 2026) and MCPSecBench (Yang et al., 2026) extend evaluation to MCP systems, while MCPDrift concentrates on measuring how tool-description poisoning degrades agent behavior over time.
 
----
-
-## 2. Benchmarks for Agent Security
-
-### AgentDojo (Debenedetti et al., NeurIPS 2024)
-
-arXiv:2406.13352
-
-AgentDojo is the most widely cited benchmark in the area. It evaluates adversarial behavior in a dynamic environment with 97 user tasks and 629 adversarial scenarios. The attack is injected through *tool responses*. In the published setup, GPT-4o retains meaningful utility but suffers a clear drop under attack while attack success remains substantial.
-
-**Connection to MCPDrift:** AgentDojo is the closest methodological relative. The key difference is the attack moment: AgentDojo injects via *tool results*, while MCPDrift injects via *tool descriptions*. Those are different trust boundaries and therefore imply different defenses. MCPDrift also emphasizes explicit multi-turn measurements such as latency of compromise and degradation rate, which AgentDojo does not foreground.
-
-### InjecAgent (Zhan et al., 2024)
-
-arXiv:2403.02691
-
-InjecAgent is an early benchmark focused specifically on indirect prompt injection in tool-integrated agents. It includes 1,054 test cases across domains such as finance, smart home control, and email. Its emphasis is on isolated attack steps rather than end-to-end multi-turn environments.
-
-**Connection to MCPDrift:** InjecAgent established that indirect prompt injection is practical across realistic tool-use domains. MCPDrift extends that direction toward MCP-specific attack surfaces and delayed multi-turn compromise.
-
----
-
-## 3. MCP-Specific Work (2025-2026)
-
-### MCP-38 Threat Taxonomy
-
-arXiv:2603.18063
-
-This work proposes a broad threat taxonomy for MCP systems, covering 38 attack classes. It explicitly includes tool description poisoning, indirect prompt injection, parasitic tool chaining, and dynamic trust violations. The taxonomy is aligned with STRIDE, OWASP LLM Top 10 (2025), and OWASP Agentic Top 10 (2026).
-
-**Connection to MCPDrift:** MCPDrift empirically measures the subset of MCP-38 that concerns tool description poisoning. That makes MCPDrift a quantitative complement to the taxonomy.
-
-### Are AI-assisted Development Tools Immune to Prompt Injection?
-
-arXiv:2603.21642
-
-This 2026 study evaluates real MCP clients such as Claude Desktop and Cursor against prompt-injection and tool-poisoning attacks. Its findings suggest that robustness varies substantially across client implementations.
-
-**Connection to MCPDrift:** The topic overlaps directly, but the evaluation target differs. That work studies end-user MCP clients in realistic deployments. MCPDrift instead isolates model behavior from client-specific orchestration, making it easier to attribute observed failures to model-level susceptibility rather than product-level integration details.
-
-### Unit 42 / Palo Alto Networks (December 2025)
-
-#### New Prompt Injection Attack Vectors Through MCP Sampling
-
-This work demonstrates practical attacks through MCP sampling features in coding-assistant settings.
-
-### Simon Willison (April 2025)
-
-#### Model Context Protocol has prompt injection security problems
-
-This influential practitioner analysis helped crystallize the industry discussion around MCP prompt injection and popularized the "rug pull" intuition: a tool can appear safe at approval time and later abuse its own description.
-
-### Invariant Labs (April 2025)
-
-Invariant Labs publicly demonstrated a tool-poisoning attack against a WhatsApp MCP setup, where a seemingly harmless tool exfiltrated private message history. This was one of the clearest public examples of product-level MCP compromise.
-
----
-
-## 4. OWASP Standards
-
-### OWASP Top 10 for LLM Applications 2025
-
-- `LLM01: Prompt Injection` is the direct parent category for MCPDrift scenarios.
-- `LLM02: Insecure Tool Handling` captures the trust model behind tool-description poisoning.
-
-### OWASP Top 10 for Agentic Applications 2026
-
-- The emerging `ASI01-ASI10` taxonomy is relevant for mapping MCPDrift scenarios into agent-specific security language.
-
-MCPDrift can be explicitly mapped onto these standards in benchmark reports and evaluation summaries.
-
----
-
-## 5. Positioning MCPDrift in the Literature
-
-| Criterion | Greshake 2023 | AgentDojo | InjecAgent | MCP-38 | MCPDrift |
-| --- | --- | --- | --- | --- | --- |
-| Attack vector | Tool outputs / external data | Tool outputs | Tool outputs | Taxonomy | **Tool descriptions** |
-| Multi-turn | No | Partial | No | No | **Yes** |
-| Latency metrics | No | No | No | No | **Yes** |
-| Defense sweep | No | Yes | No | No | **Yes** |
-| Real LLM comparison | No | Yes | Yes | No | **Yes** |
-| MCP-specific | No | No | No | Yes | **Yes** |
-
-**Gap closed by MCPDrift:** existing benchmarks do not directly measure robustness to attacks delivered through *tool descriptions* in *multi-turn* sessions with explicit delayed-compromise metrics. That is the niche MCPDrift is designed to fill.
-
----
-
-## Key References
-
-```text
-Greshake et al., "Not What You've Signed Up For", AISec 2023, arXiv:2302.12173
-Debenedetti et al., "AgentDojo", NeurIPS 2024, arXiv:2406.13352
-Zhan et al., "InjecAgent", 2024, arXiv:2403.02691
-MCP-38 Threat Taxonomy, arXiv:2603.18063
-"Are AI-assisted Development Tools Immune to Prompt Injection?", arXiv:2603.21642
-OWASP Top 10 for LLM Applications 2025, https://genai.owasp.org
-```
+# Contribution statement
+MCPDrift is a test bench for checking whether poisoned tool descriptions push an agent off course over several turns, not just on the first response. It already includes 185 passing tests, 10 validated attack scenarios, and scoring that records whether the attack works, how many turns it takes, and how quickly behavior degrades. In the mock environment, failures build over time: attack success rises from 20% on turn 1 to 80% by turns 4-5. We also have a preliminary comparison across three models and a small defense sweep, but those results should be read as an early snapshot rather than a standardized benchmark.

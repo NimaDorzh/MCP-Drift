@@ -183,7 +183,13 @@ runner = ScenarioRunner(
     output_dir="results/traces",
 )
 
-scenario_paths = sorted(Path("mcpdrift/attacks").rglob("*.json"))
+scenario_root = Path("mcpdrift/attacks")
+recovery_dir = scenario_root / "recovery"
+scenario_paths = [
+    path
+    for path in sorted(scenario_root.rglob("*.json"))
+    if path.name != "schema.json" and recovery_dir not in path.parents
+]
 scored_sessions = []
 session_classes = {}
 

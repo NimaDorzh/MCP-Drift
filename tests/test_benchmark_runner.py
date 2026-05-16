@@ -22,12 +22,15 @@ from mcpdrift.harness.agent_harness import MockAgentHarness
 ATTACKS_DIR = Path(__file__).resolve().parent.parent / "mcpdrift" / "attacks"
 BASELINE_DIR = ATTACKS_DIR / "baseline"
 MULTITURN_DIR = ATTACKS_DIR / "multiturn"
+RECOVERY_DIR = ATTACKS_DIR / "recovery"
 
 
 def _scenario_files() -> list[str]:
     paths: list[str] = []
     for d in [BASELINE_DIR, MULTITURN_DIR]:
         for p in sorted(d.glob("*.json")):
+            if RECOVERY_DIR in p.parents:
+                continue
             paths.append(str(p))
     return paths
 

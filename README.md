@@ -149,7 +149,13 @@ from pathlib import Path
 
 from mcpdrift.defenses.benchmark_runner import generate_benchmark_report, run_defense_benchmark
 
-scenario_paths = [str(path) for path in sorted(Path("mcpdrift/attacks").rglob("*.json"))]
+scenario_root = Path("mcpdrift/attacks")
+recovery_dir = scenario_root / "recovery"
+scenario_paths = [
+  str(path)
+  for path in sorted(scenario_root.rglob("*.json"))
+  if path.name != "schema.json" and recovery_dir not in path.parents
+]
 results = run_defense_benchmark(scenario_paths)
 scenarios = [json.loads(Path(path).read_text(encoding="utf-8")) for path in scenario_paths]
 generate_benchmark_report(results, scenarios, output_path="results/benchmark_report.md")

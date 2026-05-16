@@ -10,8 +10,11 @@ schema = json.loads(
 )
 errors = []
 scenario_dir = pathlib.Path("mcpdrift/attacks")
+recovery_dir = scenario_dir / "recovery"
 scenario_files = [
-    path for path in scenario_dir.rglob("*.json") if path.name != "schema.json"
+    path
+    for path in scenario_dir.rglob("*.json")
+    if path.name != "schema.json" and recovery_dir not in path.parents
 ]
 
 for path in scenario_files:

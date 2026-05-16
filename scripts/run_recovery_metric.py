@@ -7,7 +7,7 @@ from mcpdrift.harness.agent_harness import MockAgentHarness
 from mcpdrift.harness.scenario_runner import ScenarioRunner
 
 
-SCENARIO_PATH = "mcpdrift/attacks/multiturn/mt_delayed_env_recovery.json"
+SCENARIO_PATH = "mcpdrift/attacks/recovery/mt_delayed_env_recovery.json"
 
 
 def main() -> None:

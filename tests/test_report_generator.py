@@ -97,7 +97,8 @@ def test_build_multi_model_section_includes_manual_claude_results(tmp_path: Path
 
     section = build_multi_model_section(_load_traces(tmp_path))
 
-    assert "| Claude 4.6 | 0% | N/A | 0.0000 | 10 |" in section
+    assert "| Claude 4.6 † | 0% | N/A | 0.0000 | 10 |" in section
+    assert "† Manual runner, n=1 per scenario; not directly comparable to automated sweep results." in section
     assert "| p1_email_redirect | 0% | ? | ? |" in section
 
 

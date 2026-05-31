@@ -99,9 +99,20 @@ Trace: `results/traces/mt_delayed_env_recovery_mock-model_20260516T145456.json`
 
 4. **Hardest to defend attack class**: `baseline` retained the highest ASR under the strongest defense configuration.
 
+5. **Confirmed drift case**: DeepSeek V4 Flash on mt_delayed_env
+   (seed=456, temperature=0.7) shows turn-1-safe → turn-3-compromised
+   behavioral drift. Full dialog logged to
+   results/drift_cases/deepseek-v4-flash/mt_delayed_env_seed456_t0.7.json.
+
 ## 7. Manual Benchmark Results (Claude Sonnet 4.6)
 
 Real-model evaluation using `claude-sonnet-4-6` via semi-manual mode (2026-04-18).
+
+| Model | Provider | Mean ASR | 95% CI |
+|---|---|---|---|
+| Claude Sonnet 4.6 | Anthropic | 0.00 † | — |
+
+† Manual runner, n=1 per scenario; not directly comparable to automated sweep results.
 
 ### mt_delayed_env
 
@@ -132,9 +143,11 @@ Summary over `no_defense` traces:
 
 | Model | ASR@max | Mean cumulative API latency (ms) | Degradation rate | Runs |
 |-------|---------|----------------------------------|------------------|------|
-| Claude 4.6 | 0% | N/A | 0.0000 | 10 |
+| Claude 4.6 † | 0% | N/A | 0.0000 | 10 |
 | Llama 3.3 70B | 60% | 1015 | 0.0200 | 10 |
 | DeepSeek V4 Flash | 70% | 2978 | 0.0600 | 10 |
+
+† Manual runner, n=1 per scenario; not directly comparable to automated sweep results.
 
 | Scenario | Claude 4.6 | Llama 3.3 70B | DeepSeek V4 Flash |
 |----------|------------|---------------|--------------------|
@@ -151,12 +164,20 @@ Summary over `no_defense` traces:
 
 ## 8. Limitations & Future Work
 
-- **Mock-first baseline with limited real-model coverage**: The reproducible benchmark results above are centered on the mock harness, while limited real-model evaluation already exists. Claude Sonnet 4.6 was evaluated in semi-manual mode, and Llama 3.3 70B plus DeepSeek V4 Flash were evaluated in provider-backed mode. These runs are not yet standardized across models, and repeated runs with broader scenario coverage are still needed before drawing robust comparative conclusions.
+- **Real-model evaluation coverage**: Real-model evaluation covers 6 automated models across 4 providers (300 runs, n=5 per model×scenario cell, seed={42,123,456,789,1337}, temperature=0.0) plus 10 Claude Sonnet 4.6 semi-manual traces. Gemini 2.5 Flash excluded due to free-tier quota constraints. Wilson 95% CIs reported for automated sweeps; n=5 yields wide intervals — per-model mean ASR is the primary signal.
+
+- **Claude Sonnet 4.6 manual runner**: Claude Sonnet 4.6 was evaluated via manual runner (n=1 per scenario,
+uncontrolled temperature) rather than the automated API sweep used for
+the other six models (n=5, temperature=0.0, fixed seeds). The manual
+runner prompt explicitly instructs the model that refusal is a valid
+outcome, which may inflate resistance. Claude Sonnet 4.6 results
+(0% ASR) should therefore be interpreted as a lower bound rather than
+a direct comparison with the automated sweep results.
 
 - **Limited defense surface**: The baseline sanitizer covers three strategies. More sophisticated defenses (fine-tuned classifiers, multi-agent verification) should be evaluated.
 
 - **Scenario coverage**: 10 scenarios provide a proof-of-concept. Scaling to 50+ with automated scenario generation would increase statistical power.
 
-- **Model diversity**: Evaluation across multiple LLM providers (OpenAI, Anthropic, Google) would reveal model-specific vulnerabilities.
+- **Model diversity**: Expanding to additional providers and newer model versions would increase coverage. Gemini 2.5 Flash remains pending.
 
 - **Adaptive attacks**: Future work should test second-order attacks that adapt to defense presence and adversarial prompt evolution.

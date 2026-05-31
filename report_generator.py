@@ -20,10 +20,12 @@ DEFAULT_REPORT_PATH = ROOT_DIR / "results" / "benchmark_report.md"
 SECTION_HEADING = "## Multi-Model Real LLM Results"
 
 PROVIDER_COLUMNS: list[tuple[str, str]] = [
-    ("anthropic", "Claude 4.6"),
+    ("anthropic", "Claude 4.6 †"),
     ("together", "Llama 3.3 70B"),
     ("deepseek", "DeepSeek V4 Flash"),
 ]
+
+MANUAL_RUNNER_FOOTNOTE = "† Manual runner, n=1 per scenario; not directly comparable to automated sweep results."
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -83,6 +85,9 @@ def build_multi_model_section(traces: list[dict[str, Any]]) -> str:
         lines.append(
             f"| {display_name} | {summary['asr_max']} | {summary['mean_latency']} | {summary['degradation_rate']} | {summary['runs']} |"
         )
+
+    lines.append("")
+    lines.append(MANUAL_RUNNER_FOOTNOTE)
 
     lines.append("")
     lines.append("| Scenario | Claude 4.6 | Llama 3.3 70B | DeepSeek V4 Flash |")

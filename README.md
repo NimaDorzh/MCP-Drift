@@ -33,16 +33,6 @@ The MVP (Phases 1-5) is complete and the repository now supports three execution
 - semi-manual real-model evaluation for Claude Pro and Copilot Chat
 - automated provider-backed evaluation for Anthropic, Together, and DeepSeek
 
-Current project state:
-
-- Phase 1: Mock MCP server with injectable poisoned descriptions
-- Phase 2: Multi-turn engine, agent harnesses, and scenario runner APIs
-- Phase 3: 10 attack scenarios (5 baseline, 5 multi-turn) with JSON schema validation
-- Phase 4: Per-turn judging, scoring, ASR@N, latency, degradation, and recovery metrics
-- Phase 5: Baseline sanitizer, defense sweep runner, report generation, and multi-model trace aggregation
-- 185 tests currently pass
-- no unified package CLI yet; the supported entrypoints are the documented scripts and Python APIs below
-
 ## Results Snapshot
 
 Current repository artifacts include both reproducible mock-benchmark aggregates and real-model traces.
@@ -60,11 +50,6 @@ See [results/benchmark_report.md](results/benchmark_report.md) for the current a
 
 ```text
 MCP Drift/
-|-- docs/
-|   |-- manual.md                      Manual / semi-manual run guide (Claude Pro, Copilot Chat)
-|   |-- related_work.md                Literature review and positioning
-|   |-- Report.md                      Project report
-|   `-- MVP/                           Project brief, MVP plan, Phase 1-5 specs and reports
 |-- multi_runner.py                    Automated real-model sweep across anthropic/together/deepseek
 |-- mcpdrift/
 |   |-- attacks/

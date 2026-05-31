@@ -32,6 +32,7 @@ class TurnSnapshot(BaseModel):
     system_prompt: str
     tool_descriptions: list[dict[str, Any]]
     full_history: list[dict[str, Any]]
+    messages_at_turn: list[dict[str, Any]] = Field(default_factory=list)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -148,6 +149,7 @@ class MultiTurnEngine:
             system_prompt=self.system_prompt,
             tool_descriptions=self.tool_descriptions,
             full_history=list(self._history),  # snapshot copy
+            messages_at_turn=list(self._history),  # full message history up to and including this turn
         )
 
         self._snapshots.append(snapshot)

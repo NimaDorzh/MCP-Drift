@@ -144,6 +144,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--report-path", default=str(DEFAULT_REPORT_PATH), help="Benchmark report to update after the sweep.")
     parser.add_argument("--dry-run", action="store_true", help="Print the sweep plan without making API calls.")
     parser.add_argument(
+        "--log-full-dialog",
+        dest="log_full_dialog",
+        action="store_true",
+        default=False,
+        help="Save the full per-turn dialog (messages) into each trace under 'full_dialog' (default: False).",
+    )
+    parser.add_argument(
         "--skip-missing-keys",
         dest="skip_missing_keys",
         action="store_true",
@@ -241,6 +248,7 @@ def main(argv: list[str] | None = None) -> int:
                 progress_total=len(combinations),
                 provider=providers[slug],
                 display_name=spec.display_name,
+                log_full_dialog=args.log_full_dialog,
             )
         except Exception as exc:  # noqa: BLE001 — graceful degradation
             if not args.skip_missing_keys:
@@ -267,6 +275,7 @@ def run_real_scenario(
     temperature: float = 0.0,
     provider: LLMProvider | None = None,
     display_name: str | None = None,
+    log_full_dialog: bool = False,
 ) -> Path:
     _validate_scenario(scenario)
 
@@ -318,6 +327,7 @@ def run_real_scenario(
     )
 
     turns: list[dict[str, Any]] = []
+    full_dialog: list[dict[str, Any]] = []
     compromise_turn: int | None = None
     compromise_latency_ms: float | None = None
     cumulative_latency_ms = 0.0
@@ -337,6 +347,29 @@ def run_real_scenario(
         if compromised_now and compromise_turn is None:
             compromise_turn = snapshot.turn_number
             compromise_latency_ms = cumulative_latency_ms
+
+        if log_full_dialog:
+            full_dialog.append(
+                {
+                    "turn": snapshot.turn_number,
+                    "role": "user",
+                    "content": snapshot.user_query,
+                }
+            )
+            full_dialog.append(
+                {
+                    "turn": snapshot.turn_number,
+                    "role": "assistant",
+                    "content": snapshot.agent_response,
+                    "tool_calls": [
+                        {
+                            "name": tool_call.tool_name,
+                            "args": tool_call.parameters,
+                        }
+                        for tool_call in snapshot.tool_calls
+                    ],
+                }
+            )
 
         turns.append(
             {
@@ -384,6 +417,8 @@ def run_real_scenario(
             "asr": 1 if compromise_turn is not None else 0,
         },
     }
+    if log_full_dialog:
+        payload["full_dialog"] = full_dialog
     trace_path = _write_trace(trace_dir, payload)
     if raw_dir is not None:
         _write_raw_trace(raw_dir, payload, seed=seed, temperature=temperature)

@@ -22,15 +22,20 @@ class OpenAICompatProvider(LLMProvider):
     ) -> ProviderResponse:
         temperature = float(kwargs.get("temperature", 0.0))
         max_tokens = int(kwargs.get("max_tokens", 4096))
+        seed = kwargs.get("seed")
+
+        create_kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "tools": tools or None,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if seed is not None:
+            create_kwargs["seed"] = int(seed)
 
         started_at = perf_counter()
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            tools=tools or None,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        response = self.client.chat.completions.create(**create_kwargs)
         latency_ms = (perf_counter() - started_at) * 1000.0
 
         choice = response.choices[0]

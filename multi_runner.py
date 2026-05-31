@@ -27,7 +27,11 @@ from report_generator import update_multi_model_report
 ROOT_DIR = Path(__file__).resolve().parent
 ATTACKS_DIR = ROOT_DIR / "mcpdrift" / "attacks"
 DEFAULT_TRACE_DIR = ROOT_DIR / "traces"
+DEFAULT_RAW_DIR = ROOT_DIR / "results" / "raw"
 DEFAULT_REPORT_PATH = ROOT_DIR / "results" / "benchmark_report.md"
+
+DEFAULT_SEEDS: list[int] = [42, 123, 456, 789, 1337]
+DEFAULT_TEMPERATURES: list[float] = [0.0]
 
 DEFAULT_MODELS: dict[str, str] = {
     "anthropic": "claude-sonnet-4-6",
@@ -98,7 +102,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scenarios", nargs="*", help="Scenario IDs to run. Defaults to all 10 scenarios.")
     parser.add_argument("--providers", nargs="*", help="Providers to run: anthropic, together, deepseek.")
     parser.add_argument("--defenses", nargs="*", help="Defense configs to run. Defaults to no_defense.")
-    parser.add_argument("--trace-dir", default=str(DEFAULT_TRACE_DIR), help="Directory for real-run trace JSON files.")
+    parser.add_argument(
+        "--seeds",
+        "--seed",
+        dest="seeds",
+        nargs="*",
+        help="Seeds to run (space or comma separated). Defaults to 42, 123, 456, 789, 1337.",
+    )
+    parser.add_argument(
+        "--temperatures",
+        "--temperature",
+        dest="temperatures",
+        nargs="*",
+        help="Temperatures to run (space or comma separated). Defaults to 0.0.",
+    )
+    parser.add_argument("--trace-dir", default=str(DEFAULT_TRACE_DIR), help="Directory for legacy real-run trace JSON files.")
+    parser.add_argument("--raw-dir", default=str(DEFAULT_RAW_DIR), help="Directory for raw per-seed/temperature run traces.")
     parser.add_argument("--report-path", default=str(DEFAULT_REPORT_PATH), help="Benchmark report to update after the sweep.")
     parser.add_argument("--dry-run", action="store_true", help="Print the sweep plan without making API calls.")
     args = parser.parse_args(argv)
@@ -106,19 +125,28 @@ def main(argv: list[str] | None = None) -> int:
     scenario_paths = _resolve_scenarios(args.scenarios)
     providers = _resolve_providers(args.providers)
     defenses = _resolve_defenses(args.defenses)
+    seeds = _resolve_seeds(args.seeds)
+    temperatures = _resolve_temperatures(args.temperatures)
     combinations = [
-        (scenario_path, provider_name, defense_name)
+        (scenario_path, provider_name, defense_name, seed, temperature)
         for scenario_path in scenario_paths
         for provider_name in providers
         for defense_name in defenses
+        for seed in seeds
+        for temperature in temperatures
     ]
 
-    print(f"Sweep plan: {len(combinations)} combinations")
-    for index, (scenario_path, provider_name, defense_name) in enumerate(combinations, start=1):
+    print(
+        f"Sweep plan: {len(providers)} models × {len(scenario_paths)} scenarios × "
+        f"{len(seeds)} seeds × {len(temperatures)} temperatures = {len(combinations)} runs"
+    )
+    if len(defenses) > 1 or defenses != ["no_defense"]:
+        print(f"Defenses: {', '.join(defenses)}")
+    for index, (scenario_path, provider_name, defense_name, seed, temperature) in enumerate(combinations, start=1):
         scenario = _load_scenario(scenario_path)
         print(
             f"[{index}/{len(combinations)}] {provider_name} x {scenario['scenario_id']} x {defense_name} "
-            f"({DEFAULT_MODELS[provider_name]})"
+            f"x seed={seed} x t={temperature} ({DEFAULT_MODELS[provider_name]})"
         )
 
     if args.dry_run:
@@ -126,8 +154,10 @@ def main(argv: list[str] | None = None) -> int:
 
     trace_dir = Path(args.trace_dir)
     trace_dir.mkdir(parents=True, exist_ok=True)
+    raw_dir = Path(args.raw_dir)
+    raw_dir.mkdir(parents=True, exist_ok=True)
 
-    for index, (scenario_path, provider_name, defense_name) in enumerate(combinations, start=1):
+    for index, (scenario_path, provider_name, defense_name, seed, temperature) in enumerate(combinations, start=1):
         scenario = _load_scenario(scenario_path)
         result = run_real_scenario(
             scenario=scenario,
@@ -135,6 +165,9 @@ def main(argv: list[str] | None = None) -> int:
             model=DEFAULT_MODELS[provider_name],
             defense_name=defense_name,
             trace_dir=trace_dir,
+            raw_dir=raw_dir,
+            seed=seed,
+            temperature=temperature,
             progress_index=index,
             progress_total=len(combinations),
         )
@@ -152,6 +185,9 @@ def run_real_scenario(
     trace_dir: Path,
     progress_index: int,
     progress_total: int,
+    raw_dir: Path | None = None,
+    seed: int | None = None,
+    temperature: float = 0.0,
 ) -> Path:
     _validate_scenario(scenario)
 
@@ -169,7 +205,12 @@ def run_real_scenario(
     sanitizer.clear_logs()
     system_prompt, tool_descriptions = sanitizer.apply_all(system_prompt, tool_descriptions)
 
-    base_harness = AgentHarness(model=model, provider_name=provider_name)
+    base_harness = AgentHarness(
+        model=model,
+        provider_name=provider_name,
+        temperature=temperature,
+        seed=seed,
+    )
     llm_client: AgentHarness | _SanitizedAgentHarness = base_harness
     if sanitizer.config.enable_output_sanitization:
         llm_client = _SanitizedAgentHarness(base_harness, sanitizer)
@@ -251,6 +292,10 @@ def run_real_scenario(
             "defense": defense_name,
             "run_timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         },
+        "run_metadata": {
+            "seed": seed,
+            "temperature": temperature,
+        },
         "turns": turns,
         "verdict": {
             "compromised": compromise_turn is not None,
@@ -260,6 +305,8 @@ def run_real_scenario(
         },
     }
     trace_path = _write_trace(trace_dir, payload)
+    if raw_dir is not None:
+        _write_raw_trace(raw_dir, payload, seed=seed, temperature=temperature)
     return trace_path
 
 
@@ -297,6 +344,35 @@ def _resolve_defenses(selected: list[str] | None) -> list[str]:
     if invalid:
         raise ValueError(f"Unknown defense configs: {', '.join(invalid)}")
     return selected
+
+
+def _resolve_seeds(selected: list[str] | None) -> list[int]:
+    tokens = _flatten_csv(selected)
+    if not tokens:
+        return list(DEFAULT_SEEDS)
+    try:
+        return [int(token) for token in tokens]
+    except ValueError as exc:
+        raise ValueError(f"Seeds must be integers: {', '.join(tokens)}") from exc
+
+
+def _resolve_temperatures(selected: list[str] | None) -> list[float]:
+    tokens = _flatten_csv(selected)
+    if not tokens:
+        return list(DEFAULT_TEMPERATURES)
+    try:
+        return [float(token) for token in tokens]
+    except ValueError as exc:
+        raise ValueError(f"Temperatures must be floats: {', '.join(tokens)}") from exc
+
+
+def _flatten_csv(values: list[str] | None) -> list[str]:
+    if not values:
+        return []
+    tokens: list[str] = []
+    for value in values:
+        tokens.extend(token.strip() for token in str(value).split(",") if token.strip())
+    return tokens
 
 
 def _detect_malicious_tool_use(snapshot: TurnSnapshot, scenario: dict[str, Any]) -> bool:
@@ -353,6 +429,26 @@ def _write_trace(trace_dir: Path, payload: dict[str, Any]) -> Path:
 
 def _slugify(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-")
+
+
+def _model_slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+
+
+def _write_raw_trace(
+    raw_dir: Path,
+    payload: dict[str, Any],
+    seed: int | None,
+    temperature: float,
+) -> Path:
+    meta = payload["meta"]
+    cell_dir = raw_dir / _model_slug(str(meta["model"])) / str(meta["scenario_id"])
+    cell_dir.mkdir(parents=True, exist_ok=True)
+    seed_label = "none" if seed is None else str(seed)
+    filename = f"run_{seed_label}_t{float(temperature)}.json"
+    raw_path = cell_dir / filename
+    raw_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return raw_path
 
 
 if __name__ == "__main__":

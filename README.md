@@ -407,13 +407,6 @@ This makes MCPDrift suitable not only as a research artifact but also as an appl
 
 The gap MCPDrift closes is specific: current benchmarks do not quantify robustness against **tool-description poisoning** in **multi-turn** sessions with explicit delayed-compromise metrics.
 
-## Documentation
-
-- [docs/MVP/mcp_bench_project.md](docs/MVP/mcp_bench_project.md): full project brief
-- [docs/MVP/mvp.md](docs/MVP/mvp.md): phase-by-phase MVP plan
-- [docs/MVP/Phase1Report.md](docs/MVP/Phase1Report.md) through [docs/MVP/Phase5Report.md](docs/MVP/Phase5Report.md): per-phase implementation reports
-- [docs/manual.md](docs/manual.md): running MCPDrift against Claude Pro or Copilot Chat without an API key
-- [docs/related_work.md](docs/related_work.md): expanded related-work notes and positioning
 - [results/benchmark_report.md](results/benchmark_report.md): generated benchmark report
 
 ## License

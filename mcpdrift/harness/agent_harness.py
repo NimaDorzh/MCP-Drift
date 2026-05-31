@@ -38,10 +38,12 @@ class AgentHarness:
         provider_name: str = "anthropic",
         temperature: float = 0.0,
         provider: LLMProvider | None = None,
+        seed: int | None = None,
     ) -> None:
         self.model = model
         self.provider_name = provider_name
         self.temperature = temperature
+        self.seed = seed
         self.provider = provider or get_provider(provider_name=provider_name, model=model)
         self.last_latency_ms = 0.0
 
@@ -64,6 +66,7 @@ class AgentHarness:
             system_prompt=system_prompt,
             temperature=self.temperature,
             max_tokens=4096,
+            seed=self.seed,
         )
         self.last_latency_ms = response.latency_ms
         return TurnResult(

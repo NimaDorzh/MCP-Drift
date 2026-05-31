@@ -1,0 +1,191 @@
+"""Aggregate raw MCPDrift runs into per-cell ASR with Wilson 95% confidence intervals.
+
+Reads every JSON trace under ``results/raw/**/*.json``, groups runs by
+``(model, scenario)`` and computes, for each cell:
+
+* ``successes`` — number of runs the judge marked ``COMPROMISED``
+* ``mean_asr`` — ``successes / n_runs``
+* ``ci_lower`` / ``ci_upper`` — Wilson 95% confidence interval
+
+Outputs:
+
+1. ``results/aggregate.csv``
+2. ``results/aggregate_table.md``
+3. A per-model summary on stdout.
+
+Run with ``python results/aggregate.py``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+from statsmodels.stats.proportion import proportion_confint
+
+
+RESULTS_DIR = Path(__file__).resolve().parent
+DEFAULT_RAW_DIR = RESULTS_DIR / "raw"
+DEFAULT_CSV_PATH = RESULTS_DIR / "aggregate.csv"
+DEFAULT_MARKDOWN_PATH = RESULTS_DIR / "aggregate_table.md"
+
+CSV_COLUMNS = ["model", "scenario", "n_runs", "successes", "mean_asr", "ci_lower", "ci_upper"]
+
+
+@dataclass(frozen=True)
+class CellResult:
+    model: str
+    scenario: str
+    n_runs: int
+    successes: int
+    mean_asr: float
+    ci_lower: float
+    ci_upper: float
+
+
+def _is_compromised(trace: dict) -> bool:
+    verdict = trace.get("verdict", {})
+    if isinstance(verdict, dict):
+        return bool(verdict.get("compromised"))
+    return False
+
+
+def _cell_keys(raw_dir: Path, trace_path: Path, trace: dict) -> tuple[str, str]:
+    """Resolve ``(model, scenario)`` for a trace.
+
+    Prefers the ``results/raw/{model}/{scenario}/run_*.json`` directory layout
+    and falls back to the trace ``meta`` block when the file lives elsewhere.
+    """
+    try:
+        relative = trace_path.relative_to(raw_dir)
+        parts = relative.parts
+    except ValueError:
+        parts = ()
+
+    if len(parts) >= 3:
+        return parts[0], parts[1]
+
+    meta = trace.get("meta", {})
+    model = str(meta.get("model", "unknown"))
+    scenario = str(meta.get("scenario_id", "unknown"))
+    return model, scenario
+
+
+def aggregate(raw_dir: Path) -> list[CellResult]:
+    cells: dict[tuple[str, str], list[bool]] = {}
+
+    for trace_path in sorted(raw_dir.rglob("*.json")):
+        try:
+            trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        model, scenario = _cell_keys(raw_dir, trace_path, trace)
+        cells.setdefault((model, scenario), []).append(_is_compromised(trace))
+
+    results: list[CellResult] = []
+    for (model, scenario), outcomes in sorted(cells.items()):
+        n_runs = len(outcomes)
+        successes = sum(1 for outcome in outcomes if outcome)
+        mean_asr = successes / n_runs if n_runs else 0.0
+        ci_lower, ci_upper = proportion_confint(
+            successes, n_runs, alpha=0.05, method="wilson"
+        )
+        results.append(
+            CellResult(
+                model=model,
+                scenario=scenario,
+                n_runs=n_runs,
+                successes=successes,
+                mean_asr=mean_asr,
+                ci_lower=float(ci_lower),
+                ci_upper=float(ci_upper),
+            )
+        )
+    return results
+
+
+def write_csv(results: list[CellResult], csv_path: Path) -> None:
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(CSV_COLUMNS)
+        for cell in results:
+            writer.writerow(
+                [
+                    cell.model,
+                    cell.scenario,
+                    cell.n_runs,
+                    cell.successes,
+                    f"{cell.mean_asr:.4f}",
+                    f"{cell.ci_lower:.4f}",
+                    f"{cell.ci_upper:.4f}",
+                ]
+            )
+
+
+def render_markdown(results: list[CellResult]) -> str:
+    lines = [
+        "| Model | Scenario | N | Mean ASR | 95% CI |",
+        "|---|---|---|---|---|",
+    ]
+    for cell in results:
+        lines.append(
+            f"| {cell.model} | {cell.scenario} | {cell.n_runs} | "
+            f"{cell.mean_asr:.2f} | [{cell.ci_lower:.2f}, {cell.ci_upper:.2f}] |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def write_markdown(results: list[CellResult], markdown_path: Path) -> None:
+    markdown_path.parent.mkdir(parents=True, exist_ok=True)
+    markdown_path.write_text(render_markdown(results), encoding="utf-8")
+
+
+def render_summary(results: list[CellResult]) -> str:
+    by_model: dict[str, list[CellResult]] = {}
+    for cell in results:
+        by_model.setdefault(cell.model, []).append(cell)
+
+    lines = ["Per-model summary:"]
+    for model, cells in sorted(by_model.items()):
+        mean_asr = sum(cell.mean_asr for cell in cells) / len(cells)
+        mean_ci_width = sum(
+            cell.ci_upper - cell.ci_lower for cell in cells
+        ) / len(cells)
+        lines.append(
+            f"  {model}: mean ASR {mean_asr:.3f} ± {mean_ci_width:.3f} "
+            f"(mean 95% CI width, {len(cells)} scenarios)"
+        )
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--raw-dir", default=str(DEFAULT_RAW_DIR), help="Directory of raw run traces.")
+    parser.add_argument("--csv-path", default=str(DEFAULT_CSV_PATH), help="Output CSV path.")
+    parser.add_argument("--markdown-path", default=str(DEFAULT_MARKDOWN_PATH), help="Output markdown table path.")
+    args = parser.parse_args(argv)
+
+    raw_dir = Path(args.raw_dir)
+    if not raw_dir.exists():
+        print(f"No raw runs found at {raw_dir}")
+        return 1
+
+    results = aggregate(raw_dir)
+    if not results:
+        print(f"No traces found under {raw_dir}")
+        return 1
+
+    write_csv(results, Path(args.csv_path))
+    write_markdown(results, Path(args.markdown_path))
+
+    print(f"Wrote {len(results)} cells to {args.csv_path} and {args.markdown_path}")
+    print(render_summary(results))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

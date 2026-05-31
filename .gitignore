@@ -32,6 +32,9 @@ Desktop.ini
 # Results (traces are large, keep report)
 results/traces/
 results/figures/
+results/raw/
+results/aggregate.csv
+results/aggregate_table.md
 
 # Misc
 *.log

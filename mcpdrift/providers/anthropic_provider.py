@@ -3,7 +3,11 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
+from mcpdrift.logging_utils import get_logger
 from mcpdrift.providers.base import LLMProvider, ProviderResponse
+
+
+logger = get_logger(__name__)
 
 
 class AnthropicProvider(LLMProvider):
@@ -27,12 +31,20 @@ class AnthropicProvider(LLMProvider):
     ) -> ProviderResponse:
         system_prompt = str(kwargs.get("system_prompt", ""))
         max_tokens = int(kwargs.get("max_tokens", 4096))
+        temperature = float(kwargs.get("temperature", self.temperature))
+        if kwargs.get("seed") is not None:
+            logger.warning(
+                "Anthropic API does not support a 'seed' parameter; "
+                "ignoring seed=%s for model %s.",
+                kwargs.get("seed"),
+                self.model,
+            )
 
         started_at = perf_counter()
         response = self.client.messages.create(
             model=self.model,
             max_tokens=max_tokens,
-            temperature=self.temperature,
+            temperature=temperature,
             system=system_prompt,
             messages=messages,
             tools=tools or None,

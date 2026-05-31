@@ -139,6 +139,7 @@ def create(slug: str, skip_missing: bool = False) -> LLMProvider | None:
         base_url=spec.base_url,
         api_key=api_key,
         model=spec.model,
+        supports_seed=spec.provider != "google",
     )
 
 

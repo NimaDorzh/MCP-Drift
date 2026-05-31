@@ -7,11 +7,18 @@ from mcpdrift.providers.base import LLMProvider, ProviderResponse
 
 
 class OpenAICompatProvider(LLMProvider):
-    def __init__(self, base_url: str, api_key: str, model: str) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        supports_seed: bool = True,
+    ) -> None:
         from openai import OpenAI
 
         self.base_url = base_url.rstrip("/")
         self.model = model
+        self.supports_seed = supports_seed
         self.client = OpenAI(api_key=api_key, base_url=self.base_url)
 
     def complete(
@@ -31,7 +38,7 @@ class OpenAICompatProvider(LLMProvider):
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        if seed is not None:
+        if seed is not None and self.supports_seed:
             create_kwargs["seed"] = int(seed)
 
         started_at = perf_counter()

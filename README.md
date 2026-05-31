@@ -1,5 +1,7 @@
 # MCPDrift
 
+[![CI](https://github.com/NimaDorzh/MCP-Drift/actions/workflows/ci.yml/badge.svg)](https://github.com/NimaDorzh/MCP-Drift/actions/workflows/ci.yml)
+
 MCPDrift is a security benchmark for measuring **multi-turn behavioral drift** in Model Context Protocol (MCP) agents under tool poisoning. Existing MCP security benchmarks such as MCPTox and MCPSecBench evaluate attack success in a single turn. MCPDrift treats the conversation history itself as part of the attack surface and asks: if a poisoned tool description does not compromise an agent on turn 1, does that poisoned context accumulate and succeed at turn N?
 
 ## Benchmark Goals

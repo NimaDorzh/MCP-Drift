@@ -3,8 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+from mcpdrift.providers import factory
 from mcpdrift.providers.anthropic_provider import AnthropicProvider
-from mcpdrift.providers.factory import _required_api_key
+from mcpdrift.providers.factory import MODEL_REGISTRY, _required_api_key
 from mcpdrift.providers.openai_compat_provider import OpenAICompatProvider
 
 
@@ -130,3 +133,59 @@ def test_required_api_key_loads_from_dotenv(tmp_path: Path, monkeypatch: Any) ->
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
 
     assert _required_api_key("DEEPSEEK_API_KEY", "deepseek") == "dotenv-secret"
+
+
+@pytest.fixture
+def _stub_openai(monkeypatch: Any) -> None:
+    """Provide a minimal ``openai`` module so provider construction works
+    without the real package installed (it is a declared dependency installed
+    in CI)."""
+    import sys
+    import types
+
+    if "openai" in sys.modules:
+        return
+
+    module = types.ModuleType("openai")
+
+    class _StubOpenAI:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.args = args
+            self.kwargs = kwargs
+
+    module.OpenAI = _StubOpenAI  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "openai", module)
+
+
+@pytest.mark.parametrize("slug", sorted(MODEL_REGISTRY))
+def test_factory_create_all_slugs(
+    slug: str, tmp_path: Path, monkeypatch: Any, _stub_openai: None
+) -> None:
+    spec = MODEL_REGISTRY[slug]
+    # Isolate from any real .env on disk and provide a dummy key.
+    monkeypatch.setattr("mcpdrift.providers.factory.ENV_FILE_PATH", tmp_path / ".env")
+    monkeypatch.setenv(spec.env_var, "test-key")
+
+    provider = factory.create(slug)
+
+    assert provider is not None
+    if spec.provider == "anthropic":
+        assert isinstance(provider, AnthropicProvider)
+    else:
+        assert isinstance(provider, OpenAICompatProvider)
+    assert provider.model == spec.model
+
+
+def test_factory_create_missing_key_raises(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.setattr("mcpdrift.providers.factory.ENV_FILE_PATH", tmp_path / ".env")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with pytest.raises(ValueError, match="OPENAI_API_KEY not set. Export it to use gpt-4.1."):
+        factory.create("gpt-4.1")
+
+
+def test_factory_create_skip_missing_returns_none(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.setattr("mcpdrift.providers.factory.ENV_FILE_PATH", tmp_path / ".env")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    assert factory.create("gpt-4.1", skip_missing=True) is None

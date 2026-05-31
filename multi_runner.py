@@ -21,6 +21,8 @@ from mcpdrift.harness.scenario_runner import (
     _load_scenario,
     _validate_scenario,
 )
+from mcpdrift.providers import LLMProvider, factory
+from mcpdrift.providers.factory import MODEL_REGISTRY, get_model_spec
 from report_generator import update_multi_model_report
 
 
@@ -33,17 +35,30 @@ DEFAULT_REPORT_PATH = ROOT_DIR / "results" / "benchmark_report.md"
 DEFAULT_SEEDS: list[int] = [42, 123, 456, 789, 1337]
 DEFAULT_TEMPERATURES: list[float] = [0.0]
 
-DEFAULT_MODELS: dict[str, str] = {
-    "anthropic": "claude-sonnet-4-6",
-    "together": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-    "deepseek": "deepseek-v4-flash",
+# All eight model slugs, in registry order (3 existing + 5 added in Phase 2).
+ALL_MODELS: list[str] = list(MODEL_REGISTRY)
+
+# Five models added in Phase 2.
+NEW_MODELS: list[str] = [
+    "gpt-4.1",
+    "gemini-2.5-flash",
+    "qwen2.5-7b",
+    "llama-3-8b",
+    "qwen3-235b",
+]
+
+# Every model served through Together AI.
+TOGETHER_MODELS: list[str] = [
+    slug for slug, spec in MODEL_REGISTRY.items() if spec.provider == "together"
+]
+
+# Named groups accepted by ``--providers`` in addition to individual slugs.
+MODEL_GROUPS: dict[str, list[str]] = {
+    "all": ALL_MODELS,
+    "new": NEW_MODELS,
+    "together": TOGETHER_MODELS,
 }
 
-PROVIDER_DISPLAY_NAMES: dict[str, str] = {
-    "anthropic": "Claude 4.6",
-    "together": "Llama 3.3 70B",
-    "deepseek": "DeepSeek V4 Flash",
-}
 
 SENSITIVE_RESPONSE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"sk-[A-Za-z0-9_-]{8,}", re.IGNORECASE),
@@ -100,7 +115,15 @@ def main(argv: list[str] | None = None) -> int:
         description="Run MCPDrift against multiple real LLM providers and save normalized traces."
     )
     parser.add_argument("--scenarios", nargs="*", help="Scenario IDs to run. Defaults to all 10 scenarios.")
-    parser.add_argument("--providers", nargs="*", help="Providers to run: anthropic, together, deepseek.")
+    parser.add_argument(
+        "--providers",
+        nargs="*",
+        help=(
+            "Model slugs or groups to run. Individual slugs (e.g. gpt-4.1, qwen2.5-72b) "
+            "or groups: all (8 models), new (5 Phase-2 models), together (Together AI models). "
+            "Defaults to all."
+        ),
+    )
     parser.add_argument("--defenses", nargs="*", help="Defense configs to run. Defaults to no_defense.")
     parser.add_argument(
         "--seeds",
@@ -120,34 +143,57 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--raw-dir", default=str(DEFAULT_RAW_DIR), help="Directory for raw per-seed/temperature run traces.")
     parser.add_argument("--report-path", default=str(DEFAULT_REPORT_PATH), help="Benchmark report to update after the sweep.")
     parser.add_argument("--dry-run", action="store_true", help="Print the sweep plan without making API calls.")
+    parser.add_argument(
+        "--skip-missing-keys",
+        dest="skip_missing_keys",
+        action="store_true",
+        default=True,
+        help="Skip models whose API key is not set instead of failing (default: True).",
+    )
+    parser.add_argument(
+        "--no-skip-missing-keys",
+        dest="skip_missing_keys",
+        action="store_false",
+        help="Fail instead of skipping when a model's API key is not set.",
+    )
     args = parser.parse_args(argv)
 
     scenario_paths = _resolve_scenarios(args.scenarios)
-    providers = _resolve_providers(args.providers)
+    models = _resolve_models(args.providers)
     defenses = _resolve_defenses(args.defenses)
     seeds = _resolve_seeds(args.seeds)
     temperatures = _resolve_temperatures(args.temperatures)
     combinations = [
-        (scenario_path, provider_name, defense_name, seed, temperature)
+        (scenario_path, slug, defense_name, seed, temperature)
         for scenario_path in scenario_paths
-        for provider_name in providers
+        for slug in models
         for defense_name in defenses
         for seed in seeds
         for temperature in temperatures
     ]
 
     print(
-        f"Sweep plan: {len(providers)} models × {len(scenario_paths)} scenarios × "
+        f"Sweep plan: {len(models)} models × {len(scenario_paths)} scenarios × "
         f"{len(seeds)} seeds × {len(temperatures)} temperatures = {len(combinations)} runs"
     )
     if len(defenses) > 1 or defenses != ["no_defense"]:
         print(f"Defenses: {', '.join(defenses)}")
-    for index, (scenario_path, provider_name, defense_name, seed, temperature) in enumerate(combinations, start=1):
+    for index, (scenario_path, slug, defense_name, seed, temperature) in enumerate(combinations, start=1):
         scenario = _load_scenario(scenario_path)
+        spec = get_model_spec(slug)
         print(
-            f"[{index}/{len(combinations)}] {provider_name} x {scenario['scenario_id']} x {defense_name} "
-            f"x seed={seed} x t={temperature} ({DEFAULT_MODELS[provider_name]})"
+            f"[{index}/{len(combinations)}] {slug} x {scenario['scenario_id']} x {defense_name} "
+            f"x seed={seed} x t={temperature} ({spec.model})"
         )
+
+    # Report any selected models whose key is missing up front.
+    for slug in models:
+        spec = get_model_spec(slug)
+        if not factory.has_api_key(slug):
+            if args.skip_missing_keys:
+                print(f"SKIP: {slug} — {spec.env_var} not set")
+            else:
+                raise ValueError(f"{spec.env_var} not set. Export it to use {slug}.")
 
     if args.dry_run:
         return 0
@@ -157,20 +203,51 @@ def main(argv: list[str] | None = None) -> int:
     raw_dir = Path(args.raw_dir)
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    for index, (scenario_path, provider_name, defense_name, seed, temperature) in enumerate(combinations, start=1):
+    # Build providers once per model so we can skip unavailable ones cleanly.
+    providers: dict[str, LLMProvider] = {}
+    skipped: set[str] = set()
+    for slug in models:
+        spec = get_model_spec(slug)
+        try:
+            provider = factory.create(slug, skip_missing=args.skip_missing_keys)
+        except Exception as exc:  # noqa: BLE001 — graceful degradation
+            if not args.skip_missing_keys:
+                raise
+            print(f"SKIP: {slug} — {exc}")
+            skipped.add(slug)
+            continue
+        if provider is None:
+            print(f"SKIP: {slug} — {spec.env_var} not set")
+            skipped.add(slug)
+            continue
+        providers[slug] = provider
+
+    for index, (scenario_path, slug, defense_name, seed, temperature) in enumerate(combinations, start=1):
+        if slug in skipped:
+            continue
         scenario = _load_scenario(scenario_path)
-        result = run_real_scenario(
-            scenario=scenario,
-            provider_name=provider_name,
-            model=DEFAULT_MODELS[provider_name],
-            defense_name=defense_name,
-            trace_dir=trace_dir,
-            raw_dir=raw_dir,
-            seed=seed,
-            temperature=temperature,
-            progress_index=index,
-            progress_total=len(combinations),
-        )
+        spec = get_model_spec(slug)
+        try:
+            result = run_real_scenario(
+                scenario=scenario,
+                provider_name=spec.provider,
+                model=spec.model,
+                defense_name=defense_name,
+                trace_dir=trace_dir,
+                raw_dir=raw_dir,
+                seed=seed,
+                temperature=temperature,
+                progress_index=index,
+                progress_total=len(combinations),
+                provider=providers[slug],
+                display_name=spec.display_name,
+            )
+        except Exception as exc:  # noqa: BLE001 — graceful degradation
+            if not args.skip_missing_keys:
+                raise
+            print(f"SKIP: {slug} — {exc}")
+            skipped.add(slug)
+            continue
         print(f"Saved trace to {result}")
 
     update_multi_model_report(trace_dir=trace_dir, report_path=Path(args.report_path))
@@ -188,6 +265,8 @@ def run_real_scenario(
     raw_dir: Path | None = None,
     seed: int | None = None,
     temperature: float = 0.0,
+    provider: LLMProvider | None = None,
+    display_name: str | None = None,
 ) -> Path:
     _validate_scenario(scenario)
 
@@ -210,6 +289,7 @@ def run_real_scenario(
         provider_name=provider_name,
         temperature=temperature,
         seed=seed,
+        provider=provider,
     )
     llm_client: AgentHarness | _SanitizedAgentHarness = base_harness
     if sanitizer.config.enable_output_sanitization:
@@ -280,7 +360,7 @@ def run_real_scenario(
 
         status = "COMPROMISED" if compromise_turn is not None else "clean"
         print(
-            f"[{progress_index}/{progress_total}] {PROVIDER_DISPLAY_NAMES[provider_name]} x "
+            f"[{progress_index}/{progress_total}] {display_name or model} x "
             f"{scenario_id} x {defense_name} -> turn {snapshot.turn_number}, {status}"
         )
 
@@ -325,15 +405,29 @@ def _resolve_scenarios(selected: list[str] | None) -> list[Path]:
     return [available[scenario_id] for scenario_id in selected]
 
 
-def _resolve_providers(selected: list[str] | None) -> list[str]:
-    providers = list(DEFAULT_MODELS)
+def _resolve_models(selected: list[str] | None) -> list[str]:
     if not selected:
-        return providers
+        return list(ALL_MODELS)
 
-    invalid = sorted({provider for provider in selected if provider not in DEFAULT_MODELS})
+    resolved: list[str] = []
+    invalid: list[str] = []
+    for token in selected:
+        if token in MODEL_GROUPS:
+            for slug in MODEL_GROUPS[token]:
+                if slug not in resolved:
+                    resolved.append(slug)
+        elif token in MODEL_REGISTRY:
+            if token not in resolved:
+                resolved.append(token)
+        else:
+            invalid.append(token)
+
     if invalid:
-        raise ValueError(f"Unknown providers: {', '.join(invalid)}")
-    return selected
+        known = ", ".join(sorted(MODEL_REGISTRY) + sorted(MODEL_GROUPS))
+        raise ValueError(
+            f"Unknown providers: {', '.join(sorted(set(invalid)))}. Known slugs/groups: {known}."
+        )
+    return resolved
 
 
 def _resolve_defenses(selected: list[str] | None) -> list[str]:

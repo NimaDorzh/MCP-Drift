@@ -9,6 +9,16 @@ jobs:
     name: test
     runs-on: ubuntu-latest
 
+    # CI runs unit tests only and never makes real API calls. Keys are passed
+    # through for completeness; multi_runner.py skips models with missing keys
+    # via --skip-missing-keys (default), so absent secrets are harmless.
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

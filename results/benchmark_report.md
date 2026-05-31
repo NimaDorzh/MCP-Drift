@@ -133,7 +133,7 @@ Summary over `no_defense` traces:
 | Model | ASR@max | Mean cumulative API latency (ms) | Degradation rate | Runs |
 |-------|---------|----------------------------------|------------------|------|
 | Claude 4.6 | 0% | N/A | 0.0000 | 10 |
-| Llama 3.3 70B | 50% | 3159 | 0.0300 | 10 |
+| Llama 3.3 70B | 50% | 3318 | 0.0300 | 10 |
 | DeepSeek V4 Flash | 70% | 5180 | 0.0900 | 10 |
 
 | Scenario | Claude 4.6 | Llama 3.3 70B | DeepSeek V4 Flash |

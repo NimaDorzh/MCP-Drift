@@ -21,10 +21,18 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 from statsmodels.stats.proportion import proportion_confint
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from multi_runner import load_scenario_definition, rejudge_trace_payload
 
 
 RESULTS_DIR = Path(__file__).resolve().parent
@@ -107,6 +115,28 @@ def aggregate(raw_dir: Path) -> list[CellResult]:
     return results
 
 
+def rerun_judge(raw_dir: Path, provider_filter: str | None = None) -> int:
+    updated = 0
+    for trace_path in sorted(raw_dir.rglob("*.json")):
+        try:
+            trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        if provider_filter and not _matches_provider_filter(provider_filter, raw_dir, trace_path, trace):
+            continue
+
+        _model, scenario_id = _cell_keys(raw_dir, trace_path, trace)
+        scenario = load_scenario_definition(scenario_id)
+        if scenario is None:
+            continue
+
+        updated_trace = rejudge_trace_payload(trace, scenario)
+        trace_path.write_text(json.dumps(updated_trace, indent=2), encoding="utf-8")
+        updated += 1
+    return updated
+
+
 def write_csv(results: list[CellResult], csv_path: Path) -> None:
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
@@ -162,17 +192,56 @@ def render_summary(results: list[CellResult]) -> str:
     return "\n".join(lines)
 
 
+def _matches_provider_filter(
+    provider_filter: str,
+    raw_dir: Path,
+    trace_path: Path,
+    trace: dict,
+) -> bool:
+    normalized_filter = _normalize_model_slug(provider_filter)
+    model, _scenario = _cell_keys(raw_dir, trace_path, trace)
+    meta = trace.get("meta", {})
+    provider = str(meta.get("provider", ""))
+    meta_model = str(meta.get("model", ""))
+    return normalized_filter in {
+        _normalize_model_slug(model),
+        _normalize_model_slug(meta_model),
+        _normalize_model_slug(provider),
+    }
+
+
+def _normalize_model_slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw-dir", default=str(DEFAULT_RAW_DIR), help="Directory of raw run traces.")
     parser.add_argument("--csv-path", default=str(DEFAULT_CSV_PATH), help="Output CSV path.")
     parser.add_argument("--markdown-path", default=str(DEFAULT_MARKDOWN_PATH), help="Output markdown table path.")
+    parser.add_argument(
+        "--rerun-judge",
+        action="store_true",
+        help="Re-apply the local deterministic judge to existing raw traces before aggregating.",
+    )
+    parser.add_argument(
+        "--provider",
+        default=None,
+        help="Optional model/provider filter to limit --rerun-judge to matching traces.",
+    )
     args = parser.parse_args(argv)
 
     raw_dir = Path(args.raw_dir)
     if not raw_dir.exists():
         print(f"No raw runs found at {raw_dir}")
         return 1
+
+    if args.rerun_judge:
+        updated = rerun_judge(raw_dir, provider_filter=args.provider)
+        if updated == 0:
+            print("Re-judge completed but no matching traces were updated.")
+        else:
+            print(f"Re-judged {updated} trace files under {raw_dir}")
 
     results = aggregate(raw_dir)
     if not results:

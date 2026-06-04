@@ -112,7 +112,7 @@ def _load_traces(trace_dir: Path | Iterable[Path]) -> list[dict[str, Any]]:
         if not base_dir.exists():
             continue
 
-        for trace_path in sorted(base_dir.glob("*.json")):
+        for trace_path in sorted(base_dir.rglob("*.json")):
             try:
                 trace = json.loads(trace_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:

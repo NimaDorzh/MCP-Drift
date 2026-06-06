@@ -21,6 +21,7 @@ from mcpdrift.harness.scenario_runner import (
     _execute_mock_tool,
     _load_scenario,
     _validate_scenario,
+    list_benchmark_scenarios,
 )
 from mcpdrift.providers import LLMProvider, factory
 from mcpdrift.providers.factory import MODEL_REGISTRY, get_model_spec
@@ -427,11 +428,7 @@ def run_real_scenario(
 
 
 def _resolve_scenarios(selected: list[str] | None) -> list[Path]:
-    available = {
-        path.stem: path
-        for attack_dir in (ATTACKS_DIR / "baseline", ATTACKS_DIR / "multiturn")
-        for path in sorted(attack_dir.glob("*.json"))
-    }
+    available = {path.stem: path for path in list_benchmark_scenarios()}
     if not selected:
         return list(available.values())
 

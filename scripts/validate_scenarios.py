@@ -1,31 +1,39 @@
-import json
-import pathlib
+"""Validate all benchmark attack scenarios against schema and semantics."""
+
+from __future__ import annotations
+
 import sys
+from pathlib import Path
 
-import jsonschema
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-
-schema = json.loads(
-    pathlib.Path("mcpdrift/attacks/schema.json").read_text()
+from mcpdrift.harness.scenario_runner import (  # noqa: E402
+    _load_scenario,
+    _validate_scenario,
+    list_benchmark_scenarios,
 )
-errors = []
-scenario_dir = pathlib.Path("mcpdrift/attacks")
-recovery_dir = scenario_dir / "recovery"
-scenario_files = [
-    path
-    for path in scenario_dir.rglob("*.json")
-    if path.name != "schema.json" and recovery_dir not in path.parents
-]
 
-for path in scenario_files:
-    try:
-        jsonschema.validate(json.loads(path.read_text()), schema)
-    except jsonschema.ValidationError as error:
-        errors.append(f"{path}: {error.message}")
 
-if errors:
-    for error in errors:
-        print(f"FAIL: {error}")
-    sys.exit(1)
+def main() -> int:
+    errors: list[str] = []
+    scenario_files = list_benchmark_scenarios()
 
-print(f"All scenarios valid ({len(scenario_files)} files)")
+    for path in scenario_files:
+        try:
+            _validate_scenario(_load_scenario(str(path)))
+        except Exception as error:
+            errors.append(f"{path.relative_to(ROOT)}: {error}")
+
+    if errors:
+        for error in errors:
+            print(f"FAIL: {error}")
+        return 1
+
+    print(f"All scenarios valid ({len(scenario_files)} files)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

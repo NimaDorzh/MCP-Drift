@@ -10,6 +10,11 @@ import jsonschema
 import pytest
 
 from mcpdrift.environments.mock_mcp_server import MOCK_FILESYSTEM
+from mcpdrift.harness.scenario_runner import (
+    ATTACKS_DIR,
+    _validate_scenario,
+    list_benchmark_scenarios,
+)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -228,3 +233,34 @@ class TestScenarioEnvironmentCompatibility:
             assert path in MOCK_FILESYSTEM, (
                 f"Scenario {scenario_file.name} references missing mock file: {path}"
             )
+
+
+class TestScenarioDiscovery:
+    def test_list_benchmark_scenarios_matches_baseline_and_multiturn(self):
+        paths = list_benchmark_scenarios()
+        expected = _scenario_files(BASELINE_DIR) + _scenario_files(MULTITURN_DIR)
+        assert [path.resolve() for path in paths] == [path.resolve() for path in expected]
+
+    def test_recovery_scenarios_excluded_by_default(self):
+        paths = list_benchmark_scenarios()
+        assert all(path.parent.name != "recovery" for path in paths)
+
+    def test_recovery_scenarios_included_when_requested(self):
+        paths = list_benchmark_scenarios(include_recovery=True)
+        recovery_paths = sorted((ATTACKS_DIR / "recovery").glob("*.json"))
+        assert recovery_paths
+        assert all(path in paths for path in recovery_paths)
+
+
+class TestScenarioSemanticValidation:
+    def test_non_sequential_turn_numbers_raise(self):
+        scenario = _load_json(BASELINE_DIR / "p1_email_redirect.json")
+        scenario["turns"] = [{"turn": 2, "user_query": "Send email"}]
+        with pytest.raises(ValueError, match="turn numbers"):
+            _validate_scenario(scenario)
+
+    def test_out_of_range_removal_turn_raises(self):
+        scenario = _load_json(MULTITURN_DIR / "mt_delayed_ssh.json")
+        scenario["removal_turn"] = len(scenario["turns"]) + 1
+        with pytest.raises(ValueError, match="removal_turn"):
+            _validate_scenario(scenario)

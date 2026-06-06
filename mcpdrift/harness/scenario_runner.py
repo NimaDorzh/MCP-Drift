@@ -29,6 +29,8 @@ from mcpdrift.logging_utils import get_logger
 
 ATTACKS_DIR = Path(__file__).resolve().parent.parent / "attacks"
 SCHEMA_PATH = ATTACKS_DIR / "schema.json"
+BENCHMARK_SCENARIO_DIRS = ("baseline", "multiturn")
+RECOVERY_DIR_NAME = "recovery"
 
 logger = get_logger(__name__)
 
@@ -61,11 +63,33 @@ class ScenarioRunner:
         """Run a scenario supplied as a dict (useful for tests)."""
         return self._execute_scenario(scenario)
 
-    def run_batch(self, scenario_dir: str) -> list[SessionTrace]:
-        """Run every ``*.json`` scenario in *scenario_dir*."""
+    def run_batch(
+        self,
+        scenario_dir: str,
+        *,
+        include_recovery: bool = False,
+    ) -> list[SessionTrace]:
+        """Run every benchmark scenario under *scenario_dir*.
+
+        If *scenario_dir* looks like the attacks root (contains ``baseline/``
+        and ``multiturn/``), all benchmark scenarios in those folders are run.
+        Otherwise only ``*.json`` files directly in *scenario_dir* are run.
+        """
         p = Path(scenario_dir)
+        if (p / "baseline").is_dir() and (p / "multiturn").is_dir():
+            scenario_files = list_benchmark_scenarios(
+                include_recovery=include_recovery,
+                attacks_dir=p,
+            )
+        else:
+            scenario_files = [
+                path
+                for path in sorted(p.glob("*.json"))
+                if path.name != "schema.json"
+            ]
+
         traces: list[SessionTrace] = []
-        for scenario_file in sorted(p.glob("*.json")):
+        for scenario_file in scenario_files:
             trace = self.run_scenario(str(scenario_file))
             traces.append(trace)
         return traces
@@ -142,9 +166,58 @@ def _load_attack_schema() -> dict[str, Any]:
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
+def list_benchmark_scenarios(
+    *,
+    include_recovery: bool = False,
+    attacks_dir: Path | None = None,
+) -> list[Path]:
+    """Return sorted paths to benchmark scenario JSON files.
+
+    By default includes ``baseline/`` and ``multiturn/`` only. Recovery
+    scenarios live under ``recovery/`` and are excluded unless
+    *include_recovery* is ``True``.
+    """
+    root = attacks_dir or ATTACKS_DIR
+    search_dirs = [root / name for name in BENCHMARK_SCENARIO_DIRS]
+    if include_recovery:
+        search_dirs.append(root / RECOVERY_DIR_NAME)
+
+    paths: list[Path] = []
+    for directory in search_dirs:
+        if not directory.is_dir():
+            continue
+        paths.extend(
+            path
+            for path in sorted(directory.glob("*.json"))
+            if path.name != "schema.json"
+        )
+    return paths
+
+
 def _validate_scenario(scenario: dict[str, Any]) -> None:
-    """Fail fast on structurally invalid scenarios before execution."""
+    """Fail fast on structurally or semantically invalid scenarios."""
     jsonschema.validate(instance=scenario, schema=_load_attack_schema())
+    _validate_scenario_semantics(scenario)
+
+
+def _validate_scenario_semantics(scenario: dict[str, Any]) -> None:
+    """Check turn numbering and recovery-turn bounds beyond JSON Schema."""
+    scenario_id = scenario.get("scenario_id", "<unknown>")
+    turns = scenario["turns"]
+    turn_numbers = [t["turn"] for t in turns]
+    expected = list(range(1, len(turn_numbers) + 1))
+    if turn_numbers != expected:
+        raise ValueError(
+            f"Scenario {scenario_id!r}: turn numbers {turn_numbers} "
+            f"must be sequential starting at 1 ({expected})"
+        )
+
+    removal_turn = scenario.get("removal_turn")
+    if removal_turn is not None and not (1 <= removal_turn <= len(turns)):
+        raise ValueError(
+            f"Scenario {scenario_id!r}: removal_turn={removal_turn} "
+            f"must be between 1 and {len(turns)}"
+        )
 
 
 def _build_tool_descriptions(
